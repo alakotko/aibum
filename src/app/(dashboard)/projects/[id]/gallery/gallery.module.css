@@ -35,6 +35,54 @@
   display: flex;
   gap: 16px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.scaleControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.scaleSlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.scaleSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
+  transition: transform 0.15s;
+}
+
+.scaleSlider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.scaleSlider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
 }
 
 .deleteBtn {
@@ -78,8 +126,8 @@
 }
 
 .grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   overflow-y: auto;
   align-content: flex-start;
@@ -89,13 +137,17 @@
 
 .gridItem {
   position: relative;
-  aspect-ratio: 1;
+  /* Fixed size — never grows or shrinks with viewport */
+  width: var(--thumb-size, 200px);
+  height: var(--thumb-size, 200px);
+  flex-shrink: 0;
+  flex-grow: 0;
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
   background-color: var(--surface);
   border: 2px solid transparent;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .gridItem:hover {

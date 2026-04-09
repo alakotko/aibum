@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, use, memo } from 'react';
+import { useEffect, useCallback, use, memo, useState } from 'react';
 import { useGalleryStore } from '@/store/useGalleryStore';
 import { useUploadStore } from '@/store/useUploadStore';
 import GalleryImage from './GalleryImage';
@@ -43,6 +43,18 @@ export default function GalleryPage({ params }: { params: Promise<{ id: string }
 
   const { photos, selectedPhotoIds, toggleSelection, clearSelection, deleteSelected, fetchProjectPhotos } = useGalleryStore();
   const { addFiles, processQueue } = useUploadStore();
+  const [thumbSize, setThumbSize] = useState(200);
+
+  // Restore saved value after hydration (must run client-side only)
+  useEffect(() => {
+    const saved = localStorage.getItem('gallery-thumb-size');
+    if (saved) setThumbSize(Number(saved));
+  }, []);
+
+  // Persist changes
+  useEffect(() => {
+    localStorage.setItem('gallery-thumb-size', String(thumbSize));
+  }, [thumbSize]);
 
   useEffect(() => {
     fetchProjectPhotos(projectId);
@@ -93,7 +105,7 @@ export default function GalleryPage({ params }: { params: Promise<{ id: string }
   }, [selectedPhotoIds, deleteSelected, clearSelection]);
 
   return (
-    <div 
+    <div
       className={styles.container}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
@@ -107,20 +119,35 @@ export default function GalleryPage({ params }: { params: Promise<{ id: string }
           <h1>Media Finder</h1>
           <span className={styles.photoCount}>{photos.length} items</span>
         </div>
-        
+
         <div className={styles.toolbar}>
+          <div className={styles.scaleControl}>
+            <span>🔲</span>
+            <input
+              id="thumb-scale-slider"
+              type="range"
+              min={80}
+              max={400}
+              step={10}
+              value={thumbSize}
+              onChange={(e) => setThumbSize(Number(e.target.value))}
+              className={styles.scaleSlider}
+              title={`Thumbnail size: ${thumbSize}px`}
+            />
+            <span>🔳</span>
+          </div>
           {selectedPhotoIds.length > 0 && (
             <button className={styles.deleteBtn} onClick={deleteSelected}>
               Delete Selected ({selectedPhotoIds.length})
             </button>
           )}
-          
+
           <label className={styles.uploadBtn}>
             Upload Photos
-            <input 
-              type="file" 
-              multiple 
-              accept="image/jpeg, image/png, image/webp" 
+            <input
+              type="file"
+              multiple
+              accept="image/jpeg, image/png, image/webp"
               onChange={handleManualUpload}
               style={{ display: 'none' }}
             />
@@ -133,7 +160,10 @@ export default function GalleryPage({ params }: { params: Promise<{ id: string }
           <h2>Drag and drop photos anywhere to begin</h2>
         </div>
       ) : (
-        <div className={styles.grid}>
+        <div
+          className={styles.grid}
+          style={{ '--thumb-size': `${thumbSize}px` } as React.CSSProperties}
+        >
           {photos.map(photo => (
             <GalleryGridItem
               key={photo.id}
