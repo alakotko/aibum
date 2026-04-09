@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Photo Album Web App for Photographers
 
-## Getting Started
+A lean, web-native AI photo deliverable platform designed to accelerate professional photographers' workflows. This application automates the most time-consuming aspects of post-production by offering fast album creation, structured client proofing, and a centralized workspace to manage it all—without leaving the browser.
 
-First, run the development server:
+## ✨ Core Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+* **AI Curation & Selection:** Automates technical filtering (blur, blink, exposure detection) and groups similar images.
+* **Auto-Draft Album Builder:** Automatically generates complete album spreads from shortlists, featuring a spread-based canvas editor with templates, presets, and manual overrides.
+* **Streamlined Client Proofing:** Shareable proof links allowing clients to review, comment, and approve specific spreads with clear version tracking.
+* **Rapid Bulk Uploading:** Non-blocking multi-file upload with background processing and thumbnail generation.
+* **Studio Workspace:** Role-based access (Owner/Client) and dashboard for managing event projects.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Technology Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+* **Framework:** [Next.js](https://nextjs.org/) (App Router, React 19)
+* **State Management:** [Zustand](https://zustand-demo.pmnd.rs/) for efficient, client-side UI state.
+* **Database & Auth:** [Supabase](https://supabase.com/) for secure multi-tenant persistence and user authentication.
+* **AI Engine:** [AWS Rekognition](https://aws.amazon.com/rekognition/) for analyzing image quality and technical filtering.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🚀 Getting Started
 
-## Learn More
+### Prerequisites
 
-To learn more about Next.js, take a look at the following resources:
+* Node.js v20+
+* A Supabase project (for Authentication & PostgreSQL Database)
+* An AWS Account (for Rekognition API access)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Installation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. **Clone the repository and install dependencies:**
 
-## Deploy on Vercel
+   ```bash
+   npm install
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+2. **Set up Environment Variables:**
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   Create a `.env.local` file in the root directory and ensure the following keys are populated:
+
+   ```env
+   # Supabase Configuration
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+   # AWS Rekognition Configuration
+   AWS_REGION=your_aws_region
+   AWS_ACCESS_KEY_ID=your_aws_access_key
+   AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+   ```
+
+3. **Run the Development Server:**
+
+   ```bash
+   npm run dev
+   ```
+
+4. **Open the App:**
+
+   Navigate to [http://localhost:3000](http://localhost:3000) in your browser.
+
+## 📈 Roadmap
+
+* **Phase 1 (MVP):** Core upload, AI curation, album builder, and client proofing. *(Current)*
+* **Phase 1.5:** Slideshow builder and social media export.
+* **Phase 2:** Real-time multiplayer editing, lab/print integrations, white-label galleries, and custom domains.
+
+---
+
+*Designed and engineered for speed, enabling photographers to get from final selection to client approval in record time.*
