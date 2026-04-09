@@ -16,15 +16,6 @@ export default function ClientProofingPage({ params }: { params: { id: string } 
     // Generate identical layouts mimicking what the database would return
     let currentPhotos = photos;
 
-    if (currentPhotos.length === 0) {
-      currentPhotos = [
-        { id: '1', url: 'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80', status: 'accepted' },
-        { id: '2', url: 'https://images.unsplash.com/photo-1469371670807-013ccf25f16a?auto=format&fit=crop&w=800&q=80', status: 'accepted' },
-        { id: '3', url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80', status: 'accepted' },
-        { id: '4', url: 'https://images.unsplash.com/photo-1520854221256-17451cc331bf?auto=format&fit=crop&w=800&q=80', status: 'accepted' },
-      ];
-    }
-
     const acceptedList = currentPhotos.filter(p => p.status === 'accepted');
     if (acceptedList.length > 0) {
       setSpreads(generateAutoLayout(acceptedList));

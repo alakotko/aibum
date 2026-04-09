@@ -3,30 +3,28 @@ import { useEffect, useState, use } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import styles from './album.module.css';
 import { generateAutoLayout, LayoutSpread } from '@/utils/autoLayout';
-import { useCullStore } from '@/store/useCullStore';
+import { useGalleryStore } from '@/store/useGalleryStore';
 
 export default function AlbumBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
-  const { photos } = useCullStore();
+  const { photos, selectedPhotoIds } = useGalleryStore();
   const [spreads, setSpreads] = useState<LayoutSpread[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Automatically parse accepted photos and generate spreads using heuristics
+  // Automatically parse photos and generate spreads using heuristics
   useEffect(() => {
-    let acceptedPhotos = photos.filter(p => p.status === 'accepted');
+    // If user explicitly selected photos, use only those. Otherwise, use all available photos.
+    let activePhotos = selectedPhotoIds.length > 0
+      ? photos.filter(p => selectedPhotoIds.includes(p.id))
+      : photos;
 
-    if (acceptedPhotos.length === 0) {
-      // Inject mock state so the canvas always renders even if you skip the Cull step
-      acceptedPhotos = [
-        { id: '1', url: 'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80', status: 'accepted' },
-        { id: '2', url: 'https://images.unsplash.com/photo-1469371670807-013ccf25f16a?auto=format&fit=crop&w=800&q=80', status: 'accepted' },
-        { id: '3', url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80', status: 'accepted' },
-        { id: '4', url: 'https://images.unsplash.com/photo-1520854221256-17451cc331bf?auto=format&fit=crop&w=800&q=80', status: 'accepted' },
-      ];
+    if (activePhotos.length === 0) {
+      setSpreads([]);
+      return;
     }
 
-    setSpreads(generateAutoLayout(acceptedPhotos));
-  }, [photos]);
+    setSpreads(generateAutoLayout(activePhotos));
+  }, [photos, selectedPhotoIds]);
 
   const setScaleBg = (id: string, color: string) => {
     setSpreads(prev => prev.map(s => s.id === id ? { ...s, backgroundColor: color } : s));
@@ -70,14 +68,14 @@ export default function AlbumBuilderPage({ params }: { params: Promise<{ id: str
             z_index: i
           }));
           const { error: slotsErr } = await supabase.from('image_slots').insert(slots);
-          if (slotsErr) console.warn("Mock Slot Insert Failed (Expected in Demo):", slotsErr);
+          if (slotsErr) throw slotsErr;
         }
       }
       alert('Album layout successfully synced to Database!');
 
     } catch (e: any) {
-      console.warn("Supabase Sync Expected to Fail in Demo Local Mode:", e.message);
-      alert('Mock Sync Complete! (Drop real Supabase keys in .env.local to fully persist string arrays)');
+      console.error("Album Sync Failed:", e);
+      alert('Failed to sync album to database: ' + e.message);
     } finally {
       setIsSaving(false);
     }

@@ -60,21 +60,7 @@ export default function ProjectsDashboard() {
 
       if (projErr) throw projErr;
 
-      // 2. SMART SEEDER: Auto-insert Unsplash Mock Photos!
-      // This bypasses the need to upload gigabytes of real files for testing.
-      const mockPhotos = [
-        { project_id: project.id, storage_path: 'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?fm=jpg&w=800&q=80', filename: 'bride_prep.jpg', status: 'uploaded' },
-        { project_id: project.id, storage_path: 'https://images.unsplash.com/photo-1469371670807-013ccf25f16a?fm=jpg&w=800&q=80', filename: 'ceremony.jpg', status: 'uploaded' },
-        { project_id: project.id, storage_path: 'https://images.unsplash.com/photo-1519741497674-611481863552?fm=jpg&w=800&q=80', filename: 'reception.jpg', status: 'uploaded' },
-      ];
-
-      const { data: insertedPhotos, error: photoErr } = await supabase
-        .from('photos')
-        .insert(mockPhotos);
-
-      if (photoErr) throw photoErr;
-
-      router.push(`/projects/${project.id}/cull`);
+      router.push(`/projects/${project.id}/gallery`);
 
     } catch (e: any) {
       console.error(e);
@@ -97,12 +83,12 @@ export default function ProjectsDashboard() {
       {projects.length === 0 ? (
         <div className={styles.emptyState}>
           <h3 style={{ marginBottom: '1rem' }}>Your Studio is Empty</h3>
-          <p style={{ color: '#888' }}>Hit the New Project button above to auto-provision a mock Wedding utilizing Unsplash database seeds!</p>
+          <p style={{ color: '#888' }}>Hit the New Project button above to create your first blank project and start uploading!</p>
         </div>
       ) : (
         <div className={styles.grid}>
           {projects.map(p => (
-            <Link key={p.id} href={`/projects/${p.id}/cull`} className={styles.card}>
+            <Link key={p.id} href={`/projects/${p.id}/gallery`} className={styles.card}>
               <div className={styles.cardTitle}>{p.title}</div>
               <div className={styles.cardMeta}>{new Date(p.created_at).toLocaleDateString()}</div>
               <div className={styles.status}>{p.status}</div>

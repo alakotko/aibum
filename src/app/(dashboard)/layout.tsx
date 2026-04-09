@@ -1,5 +1,6 @@
 import styles from './layout.module.css';
 import Link from 'next/link';
+import UploadProgressTray from '@/components/Upload/UploadProgressTray';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -18,6 +19,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className={styles.main}>
         {children}
       </main>
+      <UploadProgressTray />
     </div>
   );
 }

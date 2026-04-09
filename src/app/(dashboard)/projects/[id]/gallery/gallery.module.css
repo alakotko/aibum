@@ -1,0 +1,153 @@
+.container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 32px;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.headerTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.headerTitle h1 {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.photoCount {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.deleteBtn {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.deleteBtn:hover {
+  opacity: 0.9;
+}
+
+.uploadBtn {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.uploadBtn:hover {
+  opacity: 0.9;
+}
+
+.emptyState {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  overflow-y: auto;
+  align-content: flex-start;
+  flex: 1;
+  padding-bottom: 32px;
+}
+
+.gridItem {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  background-color: var(--surface);
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.gridItem:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.selectionOverlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.gridItem:hover .selectionOverlay,
+.selected .selectionOverlay {
+  opacity: 1;
+}
+
+.checkbox {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid white;
+  background-color: rgba(0,0,0,0.3);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.selected {
+  border-color: var(--primary);
+}
+
+.selected .checkbox {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+.badgeWarning {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background-color: rgba(239, 68, 68, 0.9);
+  color: white;
+  font-size: 0.7rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}

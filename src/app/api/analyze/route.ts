@@ -3,7 +3,7 @@ import { RekognitionClient, DetectFacesCommand, DetectLabelsCommand, DetectFaces
 
 // Initialize the AWS Rekognition client using environment variables
 // Note: In production you'd ensure these exist, but we mock graceful fallbacks for local dev without keys
-const hasAwsKeys = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
+const hasAwsKeys = false; // Temporarily disabled to prevent Rekognition charges during feature dev
 const rekognitionClient = hasAwsKeys
   ? new RekognitionClient({
     region: process.env.AWS_REGION || 'us-east-1',
