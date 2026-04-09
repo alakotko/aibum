@@ -1,0 +1,178 @@
+.container {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 2rem;
+  color: #fff;
+  margin: 0 0 0.5rem 0;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+.subtitle {
+  color: #8b949e;
+  margin: 0;
+}
+
+.exportBtn {
+  background-color: #58a6ff;
+  color: #0d1117;
+  border: none;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.1s, background-color 0.2s;
+}
+
+.exportBtn:hover {
+  background-color: #79b8ff;
+}
+
+.exportBtn:active {
+  transform: scale(0.98);
+}
+
+.canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3.5rem;
+  padding-bottom: 6rem;
+}
+
+.spreadWrapper {
+  width: 100%;
+  max-width: 1000px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.spreadControls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.spreadLabel {
+  color: #c9d1d9;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.colorToggles {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.colorBtn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #30363d;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.colorBtn:hover {
+  transform: scale(1.1);
+}
+.colorWhite { background-color: #ffffff; }
+.colorBlack { background-color: #161b22; }
+
+.spreadBox {
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  border-radius: 4px;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+  position: relative;
+  overflow: hidden;
+  transition: background-color 0.3s ease;
+  border: 1px solid #30363d;
+}
+
+/* Book Spine shadow */
+.spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 40px;
+  transform: translateX(-50%);
+  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.12) 50%, rgba(0,0,0,0) 100%);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.slots {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  padding: 4%;
+  gap: 4%;
+}
+
+.imageSlot {
+  background-color: rgba(139, 148, 158, 0.05);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(139, 148, 158, 0.3);
+  cursor: grab;
+  transition: opacity 0.2s;
+}
+.imageSlot:active {
+  cursor: grabbing;
+  opacity: 0.8;
+}
+
+.spreadImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* Don't crop heavily without user consent in MVP */
+}
+
+/* Dynamic Layout Logic via Grid constraints */
+.layout_single .slots {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+.layout_single .slot_0 {
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+  margin: 0 auto;
+  width: 48%; /* Restrict focus to the right page simulating a single highlight */
+  transform: translateX(52%);
+}
+
+.layout_split .slots {
+  grid-template-columns: 1fr 1fr;
+}
+
+.layout_grid3 .slots {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+.layout_grid3 .slot_0 {
+  grid-column: 1 / 2;
+  grid-row: 1 / 3; /* Full left page */
+}
+.layout_grid3 .slot_1 {
+  grid-row: 1 / 2;
+  grid-column: 2 / 3;
+}
+.layout_grid3 .slot_2 {
+  grid-row: 2 / 3;
+  grid-column: 2 / 3;
+}

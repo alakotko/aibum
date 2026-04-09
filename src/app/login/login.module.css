@@ -1,0 +1,73 @@
+.container {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background-color: #0d1117;
+  color: #c9d1d9;
+  font-family: system-ui, sans-serif;
+}
+
+.card {
+  background-color: #161b22;
+  padding: 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 400px;
+  border: 1px solid #30363d;
+}
+
+.title {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1rem;
+}
+
+.inputGroup label {
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  color: #8b949e;
+}
+
+.inputGroup input {
+  padding: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+  background-color: #0d1117;
+  color: #c9d1d9;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.inputGroup input:focus {
+  border-color: #58a6ff;
+}
+
+.button {
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: 1rem;
+  border: none;
+  border-radius: 6px;
+  background-color: #238636;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.button:hover {
+  background-color: #2ea043;
+}
