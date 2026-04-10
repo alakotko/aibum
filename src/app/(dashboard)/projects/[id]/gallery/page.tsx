@@ -3,11 +3,13 @@
 import { useEffect, useCallback, use, memo, useState } from 'react';
 import { useGalleryStore } from '@/store/useGalleryStore';
 import { useUploadStore } from '@/store/useUploadStore';
+import { createClient } from '@/utils/supabase/client';
+import { generateAutoLayout, LayoutSpread } from '@/utils/autoLayout';
 import GalleryImage from './GalleryImage';
 import styles from './gallery.module.css';
 
-// Memoized grid item — only re-renders when THIS photo's selection state changes,
-// not when other photos in the list are selected.
+// ─── Gallery Grid Item ──────────────────────────────────────────────────────
+
 const GalleryGridItem = memo(function GalleryGridItem({
   photo,
   isSelected,
@@ -37,33 +39,45 @@ const GalleryGridItem = memo(function GalleryGridItem({
   );
 });
 
+// ─── Main Page ──────────────────────────────────────────────────────────────
+
 export default function GalleryPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const projectId = resolvedParams.id;
 
   const { photos, selectedPhotoIds, toggleSelection, clearSelection, deleteSelected, fetchProjectPhotos } = useGalleryStore();
   const { addFiles, processQueue } = useUploadStore();
-  const [thumbSize, setThumbSize] = useState(200);
 
-  // Restore saved value after hydration (must run client-side only)
+  const [thumbSize, setThumbSize] = useState(200);
+  const [activeTab, setActiveTab] = useState<'gallery' | 'album'>('gallery');
+  const [spreads, setSpreads] = useState<LayoutSpread[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Persist thumb size
   useEffect(() => {
     const saved = localStorage.getItem('gallery-thumb-size');
     if (saved) setThumbSize(Number(saved));
   }, []);
-
-  // Persist changes
   useEffect(() => {
     localStorage.setItem('gallery-thumb-size', String(thumbSize));
   }, [thumbSize]);
 
+  // Fetch photos on mount
   useEffect(() => {
     fetchProjectPhotos(projectId);
   }, [projectId, fetchProjectPhotos]);
 
-  // Global Drag & Drop over the gallery
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
+  // Regenerate album layout whenever photos/selection changes
+  useEffect(() => {
+    const activePhotos = selectedPhotoIds.length > 0
+      ? photos.filter(p => selectedPhotoIds.includes(p.id))
+      : photos;
+    setSpreads(activePhotos.length > 0 ? generateAutoLayout(activePhotos) : []);
+  }, [photos, selectedPhotoIds]);
+
+  // ── Upload handlers ────────────────────────────────────────────────────────
+
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
 
   const processDrop = async (files: File[]) => {
     if (files.length === 0) return;
@@ -84,95 +98,246 @@ export default function GalleryPage({ params }: { params: Promise<{ id: string }
     }
   };
 
-  // Click & Multiselect Logic
+  // ── Selection handlers ─────────────────────────────────────────────────────
+
   const handlePhotoClick = (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     toggleSelection(id, e.shiftKey);
   };
 
-  // Keyboard shortcut for deleting selected photos
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.key === 'Backspace' || e.key === 'Delete') && selectedPhotoIds.length > 0) {
         deleteSelected();
       }
-      if (e.key === 'Escape') {
-        clearSelection();
-      }
+      if (e.key === 'Escape') clearSelection();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedPhotoIds, deleteSelected, clearSelection]);
+
+  // ── Album Spread Controls ─────────────────────────────────────────────────
+
+  const setSpreadBg = (id: string, color: string) => {
+    setSpreads(prev => prev.map(s => s.id === id ? { ...s, backgroundColor: color } : s));
+  };
+
+  const handleRegenerateLayout = () => {
+    const activePhotos = selectedPhotoIds.length > 0
+      ? photos.filter(p => selectedPhotoIds.includes(p.id))
+      : photos;
+    setSpreads(activePhotos.length > 0 ? generateAutoLayout(activePhotos) : []);
+  };
+
+  const handleExport = async () => {
+    setIsSaving(true);
+    try {
+      const supabase = createClient();
+      const { data: album, error: albumErr } = await supabase
+        .from('albums')
+        .insert({ project_id: projectId, title: 'Exported Album' })
+        .select()
+        .single();
+      if (albumErr) throw albumErr;
+
+      for (const [index, spread] of spreads.entries()) {
+        const { data: insertedSpread, error: spreadErr } = await supabase
+          .from('spreads')
+          .insert({
+            album_id: album.id,
+            page_number: index + 1,
+            layout_type: spread.layoutType,
+            background_color: spread.backgroundColor,
+          })
+          .select()
+          .single();
+        if (spreadErr) throw spreadErr;
+
+        if (spread.images.length > 0) {
+          const slots = spread.images.map((img, i) => ({
+            spread_id: insertedSpread.id,
+            photo_id: img.id,
+            z_index: i,
+          }));
+          const { error: slotsErr } = await supabase.from('image_slots').insert(slots);
+          if (slotsErr) throw slotsErr;
+        }
+      }
+      alert('Album layout successfully synced to Database!');
+    } catch (e: any) {
+      console.error('Album Sync Failed:', e);
+      alert('Failed to sync album to database: ' + e.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div
       className={styles.container}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      onClick={(e) => {
-        // Clear selection if clicking on the background
-        if (e.target === e.currentTarget) clearSelection();
-      }}
     >
+      {/* ── Unified Header ───────────────────────────────────────────────── */}
       <header className={styles.header}>
         <div className={styles.headerTitle}>
-          <h1>Media Finder</h1>
-          <span className={styles.photoCount}>{photos.length} items</span>
+          <h1>Media Studio</h1>
+          <span className={styles.photoCount}>{photos.length} photos</span>
+          {selectedPhotoIds.length > 0 && (
+            <span className={styles.selectionBadge}>{selectedPhotoIds.length} selected</span>
+          )}
         </div>
 
         <div className={styles.toolbar}>
-          <div className={styles.scaleControl}>
-            <span>🔲</span>
-            <input
-              id="thumb-scale-slider"
-              type="range"
-              min={80}
-              max={400}
-              step={10}
-              value={thumbSize}
-              onChange={(e) => setThumbSize(Number(e.target.value))}
-              className={styles.scaleSlider}
-              title={`Thumbnail size: ${thumbSize}px`}
-            />
-            <span>🔳</span>
-          </div>
-          {selectedPhotoIds.length > 0 && (
-            <button className={styles.deleteBtn} onClick={deleteSelected}>
-              Delete Selected ({selectedPhotoIds.length})
-            </button>
+          {activeTab === 'gallery' && (
+            <>
+              <div className={styles.scaleControl}>
+                <span>🔲</span>
+                <input
+                  id="thumb-scale-slider"
+                  type="range"
+                  min={80}
+                  max={400}
+                  step={10}
+                  value={thumbSize}
+                  onChange={(e) => setThumbSize(Number(e.target.value))}
+                  className={styles.scaleSlider}
+                  title={`Thumbnail size: ${thumbSize}px`}
+                />
+                <span>🔳</span>
+              </div>
+              {selectedPhotoIds.length > 0 && (
+                <button className={styles.deleteBtn} onClick={deleteSelected}>
+                  Delete ({selectedPhotoIds.length})
+                </button>
+              )}
+              <label className={styles.uploadBtn}>
+                Upload Photos
+                <input
+                  type="file"
+                  multiple
+                  accept="image/jpeg, image/png, image/webp"
+                  onChange={handleManualUpload}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            </>
           )}
 
-          <label className={styles.uploadBtn}>
-            Upload Photos
-            <input
-              type="file"
-              multiple
-              accept="image/jpeg, image/png, image/webp"
-              onChange={handleManualUpload}
-              style={{ display: 'none' }}
-            />
-          </label>
+          {activeTab === 'album' && (
+            <>
+              <button className={styles.regenBtn} onClick={handleRegenerateLayout}>
+                ↺ Re-shuffle Layout
+              </button>
+              <button className={styles.exportBtn} onClick={handleExport} disabled={isSaving || spreads.length === 0}>
+                {isSaving ? 'Syncing…' : 'Export for Proofing'}
+              </button>
+            </>
+          )}
         </div>
       </header>
 
-      {photos.length === 0 ? (
-        <div className={styles.emptyState}>
-          <h2>Drag and drop photos anywhere to begin</h2>
-        </div>
-      ) : (
-        <div
-          className={styles.grid}
-          style={{ '--thumb-size': `${thumbSize}px` } as React.CSSProperties}
+      {/* ── Tab Nav ──────────────────────────────────────────────────────── */}
+      <div className={styles.tabNav}>
+        <button
+          id="tab-gallery"
+          className={`${styles.tabBtn} ${activeTab === 'gallery' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('gallery')}
         >
-          {photos.map(photo => (
-            <GalleryGridItem
-              key={photo.id}
-              photo={photo}
-              isSelected={selectedPhotoIds.includes(photo.id)}
-              onClick={handlePhotoClick}
-            />
-          ))}
-        </div>
+          Gallery
+        </button>
+        <button
+          id="tab-album"
+          className={`${styles.tabBtn} ${activeTab === 'album' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('album')}
+        >
+          Album Builder
+          {spreads.length > 0 && (
+            <span className={styles.spreadCount}>{spreads.length} spreads</span>
+          )}
+        </button>
+      </div>
+
+      {/* ── Gallery Tab ──────────────────────────────────────────────────── */}
+      {activeTab === 'gallery' && (
+        photos.length === 0 ? (
+          <div
+            className={styles.emptyState}
+            onClick={(e) => { if (e.target === e.currentTarget) clearSelection(); }}
+          >
+            <h2>Drag and drop photos anywhere to begin</h2>
+            <p>Or use the Upload Photos button above</p>
+          </div>
+        ) : (
+          <div
+            className={styles.grid}
+            style={{ '--thumb-size': `${thumbSize}px` } as React.CSSProperties}
+            onClick={(e) => { if (e.target === e.currentTarget) clearSelection(); }}
+          >
+            {photos.map(photo => (
+              <GalleryGridItem
+                key={photo.id}
+                photo={photo}
+                isSelected={selectedPhotoIds.includes(photo.id)}
+                onClick={handlePhotoClick}
+              />
+            ))}
+          </div>
+        )
+      )}
+
+      {/* ── Album Builder Tab ─────────────────────────────────────────────── */}
+      {activeTab === 'album' && (
+        spreads.length === 0 ? (
+          <div className={styles.emptyState}>
+            <h2>No photos to build an album from</h2>
+            <p>Upload photos in the Gallery tab first, then come back here.</p>
+          </div>
+        ) : (
+          <div className={styles.albumCanvas}>
+            {spreads.map((spread, index) => (
+              <div key={spread.id} className={styles.spreadWrapper}>
+                <div className={styles.spreadControls}>
+                  <span className={styles.spreadLabel}>Spread {index + 1} · {spread.images.length} image{spread.images.length !== 1 ? 's' : ''}</span>
+                  <div className={styles.colorToggles}>
+                    <button
+                      className={`${styles.colorBtn} ${styles.colorWhite}`}
+                      onClick={() => setSpreadBg(spread.id, '#ffffff')}
+                      title="White background"
+                    />
+                    <button
+                      className={`${styles.colorBtn} ${styles.colorBlack}`}
+                      onClick={() => setSpreadBg(spread.id, '#161b22')}
+                      title="Dark background"
+                    />
+                  </div>
+                </div>
+
+                <div
+                  className={`${styles.spreadBox} ${styles['layout_' + spread.layoutType]}`}
+                  style={{ backgroundColor: spread.backgroundColor }}
+                >
+                  <div className={styles.spine} />
+                  <div className={styles.slots}>
+                    {spread.images.map((img, i) => (
+                      <div key={img.id} className={`${styles.imageSlot} ${styles[`slot_${i}`]}`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img.thumbnailUrl ?? img.url}
+                          alt="Album spread"
+                          draggable
+                          className={styles.spreadImg}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   );

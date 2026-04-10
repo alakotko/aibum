@@ -1,4 +1,4 @@
-import { Photo } from '@/store/useCullStore';
+import { Photo } from '@/store/useGalleryStore';
 
 export interface LayoutSpread {
   id: string; // temp client identifier

@@ -8,3 +8,16 @@ body {
 * {
   box-sizing: border-box;
 }
+
+:root {
+  /* Dark theme tokens */
+  --background: #0d1117;
+  --foreground: #c9d1d9;
+  --surface: #161b22;
+  --border: #30363d;
+  --muted: #8b949e;
+
+  /* Brand / primary */
+  --primary: #58a6ff;
+  --primary-foreground: #0d1117;
+}
