@@ -9,6 +9,8 @@ export default function ProjectsDashboard() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
@@ -69,6 +71,31 @@ export default function ProjectsDashboard() {
     }
   };
 
+  const handleDeleteProject = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      // Soft-delete via SECURITY DEFINER RPC.
+      // Using .rpc() instead of .update() avoids the PostgREST RETURNING+RLS conflict:
+      // PostgREST wraps every .update() in a CTE with RETURNING, and PostgreSQL then
+      // enforces SELECT policies on the post-update row — which fails because
+      // the updated row has deleted_at set and no longer passes `deleted_at is null`.
+      const { error } = await supabase.rpc('soft_delete_project', {
+        project_id: deleteTarget.id,
+      });
+
+      if (error) throw error;
+
+      setProjects(prev => prev.filter(p => p.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (e: any) {
+      console.error(e);
+      alert('Failed to delete project: ' + e.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) return <div className={styles.container}>Loading Studio Projects...</div>;
 
   return (
@@ -88,12 +115,69 @@ export default function ProjectsDashboard() {
       ) : (
         <div className={styles.grid}>
           {projects.map(p => (
-            <Link key={p.id} href={`/projects/${p.id}/gallery`} className={styles.card}>
-              <div className={styles.cardTitle}>{p.title}</div>
-              <div className={styles.cardMeta}>{new Date(p.created_at).toLocaleDateString()}</div>
-              <div className={styles.status}>{p.status}</div>
-            </Link>
+            <div key={p.id} className={styles.cardWrapper}>
+              <Link href={`/projects/${p.id}/gallery`} className={styles.card}>
+                <div className={styles.cardTitle}>{p.title}</div>
+                <div className={styles.cardMeta}>{new Date(p.created_at).toLocaleDateString()}</div>
+                <div className={styles.status}>{p.status}</div>
+              </Link>
+              <button
+                id={`delete-project-${p.id}`}
+                className={styles.deleteCardBtn}
+                title="Delete project"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDeleteTarget({ id: p.id, title: p.title });
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </button>
+            </div>
           ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className={styles.modalOverlay} onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalIcon}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <h2 className={styles.modalTitle}>Delete Project?</h2>
+            <p className={styles.modalBody}>
+              <strong>&ldquo;{deleteTarget.title}&rdquo;</strong> and all its photos and albums will be permanently deleted. This cannot be undone.
+            </p>
+            <div className={styles.modalActions}>
+              <button
+                id="cancel-delete-project"
+                className={styles.cancelBtn}
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                id="confirm-delete-project"
+                className={styles.confirmDeleteBtn}
+                onClick={handleDeleteProject}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting…' : 'Delete Project'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
