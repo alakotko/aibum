@@ -133,6 +133,8 @@ export default function GalleryPage({ params }: { params: Promise<{ id: string }
     setIsSaving(true);
     try {
       const supabase = createClient();
+
+      // 1. Insert album
       const { data: album, error: albumErr } = await supabase
         .from('albums')
         .insert({ project_id: projectId, title: 'Exported Album' })
@@ -140,29 +142,33 @@ export default function GalleryPage({ params }: { params: Promise<{ id: string }
         .single();
       if (albumErr) throw albumErr;
 
-      for (const [index, spread] of spreads.entries()) {
-        const { data: insertedSpread, error: spreadErr } = await supabase
-          .from('spreads')
-          .insert({
+      // 2. Batch-insert all spreads in one round-trip
+      const { data: insertedSpreads, error: spreadsErr } = await supabase
+        .from('spreads')
+        .insert(
+          spreads.map((spread, index) => ({
             album_id: album.id,
             page_number: index + 1,
             layout_type: spread.layoutType,
             background_color: spread.backgroundColor,
-          })
-          .select()
-          .single();
-        if (spreadErr) throw spreadErr;
+          }))
+        )
+        .select();
+      if (spreadsErr) throw spreadsErr;
 
-        if (spread.images.length > 0) {
-          const slots = spread.images.map((img, i) => ({
-            spread_id: insertedSpread.id,
-            photo_id: img.id,
-            z_index: i,
-          }));
-          const { error: slotsErr } = await supabase.from('image_slots').insert(slots);
-          if (slotsErr) throw slotsErr;
-        }
+      // 3. Batch-insert all image slots in one round-trip
+      const allSlots = insertedSpreads.flatMap((insertedSpread, index) =>
+        spreads[index].images.map((img, i) => ({
+          spread_id: insertedSpread.id,
+          photo_id: img.id,
+          z_index: i,
+        }))
+      );
+      if (allSlots.length > 0) {
+        const { error: slotsErr } = await supabase.from('image_slots').insert(allSlots);
+        if (slotsErr) throw slotsErr;
       }
+
       alert('Album layout successfully synced to Database!');
     } catch (e: any) {
       console.error('Album Sync Failed:', e);

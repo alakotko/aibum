@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.pi-lens/index.json
+.pi-lens/cache/jscpd.json
+.pi-lens/cache/jscpd.meta.json
+.pi-lens/cache/knip.json
+.pi-lens/cache/knip.meta.json
+.pi-lens/cache/session-start-guidance.json
+.pi-lens/cache/session-start-guidance.meta.json
+.pi-lens/cache/todo-baseline.json
+.pi-lens/cache/todo-baseline.meta.json
+.pi-lens/reviews/booboo-2026-04-12T07-55-22.json
+.pi-lens/reviews/booboo-2026-04-12T07-55-22.md
+.pi-lens/reviews/booboo-2026-04-12T07-56-11.json
+.pi-lens/reviews/booboo-2026-04-12T07-56-11.md
