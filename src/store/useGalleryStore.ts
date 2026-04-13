@@ -1,14 +1,32 @@
 import { create } from 'zustand';
 import { createClient } from '@/utils/supabase/client';
+import type { SelectionStatus } from '@/types/workflow';
 
 export interface Photo {
   id: string;
   url: string;
+  filename?: string;
   thumbnailUrl?: string; // Stored WebP thumbnail for fast grid display
-  status: 'pending' | 'accepted' | 'rejected';
+  selectionStatus: SelectionStatus;
   aiScore?: number;
   aiFlags?: string[];
 }
+
+type AnalyzeResult = {
+  url: string;
+  flags?: Array<{ type: string; confidence: number }>;
+  score?: number;
+};
+
+type AlbumInputRow = {
+  id: string;
+  filename: string;
+  storage_path: string;
+  thumbnail_path: string | null;
+  selection_status: SelectionStatus;
+  ai_score: number | null;
+  ai_flags: unknown;
+};
 
 interface GalleryState {
   photos: Photo[];
@@ -16,6 +34,7 @@ interface GalleryState {
   lastClickedId: string | null;
   
   setPhotos: (photos: Photo[]) => void;
+  updateSelectionStatus: (ids: string[], selectionStatus: SelectionStatus) => Promise<void>;
   
   toggleSelection: (id: string, shift: boolean) => void;
   clearSelection: () => void;
@@ -35,6 +54,29 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   lastClickedId: null,
 
   setPhotos: (photos) => set({ photos }),
+
+  updateSelectionStatus: async (ids, selectionStatus) => {
+    if (ids.length === 0) return;
+
+    set((state) => ({
+      photos: state.photos.map((photo) =>
+        ids.includes(photo.id) ? { ...photo, selectionStatus } : photo
+      ),
+    }));
+
+    const dbIds = ids.filter((id) => !id.startsWith('optimistic-'));
+    if (dbIds.length === 0) return;
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('album_inputs')
+      .update({ selection_status: selectionStatus })
+      .in('id', dbIds);
+
+    if (error) {
+      console.error('Failed to update selection status', error);
+    }
+  },
 
   toggleSelection: (id: string, shift: boolean) => set((state) => {
     let newSelection = [...state.selectedPhotoIds];
@@ -88,12 +130,12 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
       lastClickedId: null
     }));
 
-    // 2. Soft-Delete from Database (Remove Postgres row, keep S3 object)
+    // 2. Remove from the current workflow table; storage cleanup can be handled separately.
     const dbIds = idsToDelete.filter(id => !id.startsWith('optimistic-'));
     if (dbIds.length > 0) {
       const supabase = createClient();
       try {
-        await supabase.from('photos').delete().in('id', dbIds);
+        await supabase.from('album_inputs').delete().in('id', dbIds);
       } catch (err) {
         console.error("Failed to batch delete photos from DB:", err);
       }
@@ -112,14 +154,19 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrls: urls })
       });
-      const data = await res.json();
+      const data = (await res.json()) as { results?: AnalyzeResult[] };
 
       if (data.results) {
+        const results = data.results;
         set((state) => ({
           photos: state.photos.map(p => {
-            const analysis = data.results.find((r: any) => r.url === p.url);
+            const analysis = results.find((result) => result.url === p.url);
             if (analysis && analysis.flags) {
-              return { ...p, aiFlags: analysis.flags.map((f: any) => f.type) };
+              return {
+                ...p,
+                aiFlags: analysis.flags.map((flag) => flag.type),
+                aiScore: typeof analysis.score === 'number' ? analysis.score : p.aiScore,
+              };
             }
             return p;
           })
@@ -134,21 +181,26 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   fetchProjectPhotos: async (projectId: string) => {
     const supabase = createClient();
     try {
-      const { data, error } = await supabase.from('photos').select('*').eq('project_id', projectId);
+      const { data, error } = await supabase
+        .from('album_inputs')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });
       if (error) throw error;
       
-      if (data && data.length > 0) {
-        set({
-          photos: data.map((p: any) => ({
-            id: p.id,
-            url: p.storage_path,
-            thumbnailUrl: p.thumbnail_path ?? undefined,
-            status: p.status === 'processed' ? 'accepted' : 'pending'
-          })),
-          selectedPhotoIds: [],
-          lastClickedId: null
-        });
-      }
+      set({
+        photos: ((data ?? []) as AlbumInputRow[]).map((p) => ({
+          id: p.id,
+          filename: p.filename,
+          url: p.storage_path,
+          thumbnailUrl: p.thumbnail_path ?? undefined,
+          selectionStatus: p.selection_status,
+          aiScore: p.ai_score ?? undefined,
+          aiFlags: Array.isArray(p.ai_flags) ? p.ai_flags : [],
+        })),
+        selectedPhotoIds: [],
+        lastClickedId: null
+      });
     } catch (e) {
       console.error("Failed to load photos from Database natively:", e);
     }

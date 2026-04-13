@@ -1,176 +1,93 @@
-# Albumin — Project Architecture Overview
+# Albumin Architecture
 
-> AI-powered photo album web app for professional photographers. Built with Next.js 16, Supabase, Zustand, and AWS Rekognition.
+## Summary
 
----
+Albumin is structured around a workflow-first project model:
 
-## High-Level Architecture
+`projects -> album_inputs -> album_versions -> proof_links -> offers -> orders`
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          BROWSER (Client)                          │
-│                                                                     │
-│  ┌──────────────┐   ┌──────────────┐   ┌────────────────────────┐  │
-│  │  Zustand      │   │  React Pages │   │  Shared Components     │  │
-│  │  Stores       │◄──┤  (App Router)│──►│  (UploadProgressTray)  │  │
-│  │              │   │              │   │                        │  │
-│  │ GalleryStore │   │ /login       │   └────────────────────────┘  │
-│  │ UploadStore  │   │ /projects    │                                │
-│  └──────┬───────┘   │ /gallery     │                                │
-│         │           │ /proof       │                                │
-│         ▼           └──────┬───────┘                                │
-│  ┌──────────────┐          │                                        │
-│  │  Utils        │          │                                        │
-│  │ (thumbnails,  │          │                                        │
-│  │  autoLayout)  │          │                                        │
-│  └──────────────┘          │                                        │
-└─────────────────────────────┼───────────────────────────────────────┘
-                              │ fetch()
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         SERVER (Next.js API)                        │
-│                                                                     │
-│  ┌──────────────┐   ┌──────────────────────────────┐               │
-│  │ /api/analyze  │   │  proxy.ts (Auth Middleware)   │               │
-│  │ AWS Rekognit. │   │  Session refresh on each req  │               │
-│  └──────────────┘   └──────────────────────────────┘               │
-└─────────────────────────────┬───────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                       SUPABASE (Backend-as-a-Service)               │
-│                                                                     │
-│  ┌──────────┐  ┌───────────┐  ┌──────────────────────────────────┐ │
-│  │   Auth    │  │  Storage   │  │  PostgreSQL (RLS-protected)     │ │
-│  │ (email/   │  │ (photos    │  │                                  │ │
-│  │  password)│  │  bucket)   │  │  profiles → projects → photos   │ │
-│  └──────────┘  └───────────┘  │  projects → albums → spreads     │ │
-│                                │  spreads → image_slots, comments │ │
-│                                └──────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-```
+The application keeps upload and curation interactions client-side where responsiveness matters, and relies on Supabase tables plus RLS for durable workflow state.
 
----
+## Runtime Structure
 
-## Directory Map
+### App Router
 
-```
-albuminbrowser/
-├── public/               Static assets (SVGs, favicon) — mostly unused scaffolding
-├── src/
-│   ├── app/              Next.js App Router — all pages, layouts, and API routes
-│   │   ├── (dashboard)/  Auth-protected route group with sidebar layout
-│   │   │   └── projects/ Project listing + per-project gallery workspace
-│   │   ├── api/          Server endpoints (AI analysis)
-│   │   ├── login/        Authentication page
-│   │   └── proof/        Public client proofing page
-│   ├── components/       Shared React components (UploadProgressTray)
-│   ├── store/            Zustand stores (gallery state, upload pipeline)
-│   ├── utils/            Helpers (Supabase clients, image processing, auto-layout)
-│   └── proxy.ts          Auth middleware for session refresh
-├── supabase/
-│   └── migrations/       SQL migrations defining the full DB schema + RLS
-├── AGENTS.md             AI agent instructions for Next.js conventions
-├── CLAUDE.md             Project context for AI pair programming
-└── package.json          Dependencies: Next.js 16, React 19, Zustand, Supabase, AWS SDK
-```
+- `src/app/(dashboard)/projects` lists projects and opens the workflow workspace.
+- `src/app/(dashboard)/projects/[id]` is the core project surface with `Photos`, `Drafts`, `Proof`, `Offers`, and `Orders` tabs.
+- `src/app/(dashboard)/orders` aggregates studio orders across projects.
+- `src/app/(dashboard)/branding` manages white-label proof identity.
+- `src/app/proof/[id]` is the public proof page loaded by proof-link slug.
+- `src/app/api/analyze` batches AWS Rekognition-based photo analysis.
 
-> Each directory contains its own `README.md` with detailed descriptions and connection maps.
+### Client State
 
----
+- `useUploadStore` manages optimistic upload queue state and storage writes.
+- `useGalleryStore` now acts as the project input store for `album_inputs`, selection state, and AI flags.
+- Draft spreads are generated client-side with `generateAutoLayout()` and persisted only when the user saves a version.
 
-## Data Flow
+### Supabase
 
-### 1. Upload Pipeline
+- **Auth**: studio owner sign-in and session refresh via `proxy.ts`.
+- **Storage**: uploaded images and generated thumbnails in the `photos` bucket.
+- **Postgres**: workflow entities for proofing, offers, orders, and branding.
+- **RLS**: every new workflow table is scoped to studio ownership, with narrow public access for active proof links and proof comments.
 
-```
-User drops files
-  → useUploadStore.addFiles()
-    → generateThumbnail() (canvas resize → WebP data URL)
-    → useGalleryStore.addOptimisticPhotos() (instant preview)
-  → useUploadStore.processQueue()
-    → Supabase Storage upload (full image + WebP thumbnail)
-    → Supabase DB insert (photos table)
-    → useGalleryStore.swapOptimisticPhoto() (replace blob with real URL)
-    → scheduleAnalysis() (debounced batch → /api/analyze)
-```
+## Data Model
 
-### 2. AI Analysis
+### Core entities
 
-```
-/api/analyze receives image URLs
-  → Fetches raw bytes from public URLs
-  → AWS Rekognition DetectFaces (ALL attributes)
-  → Returns quality flags: Blur (sharpness < 60), Closed Eyes
-  → useGalleryStore updates photo.aiFlags
-  → Gallery UI renders ⚠️ warning badges
-```
+- `projects`: top-level shoot/work item plus overall workflow status
+- `clients`: project-level client metadata
+- `album_inputs`: uploaded photos, shortlist state, and AI flags
+- `selection_sets`: named sets of shortlisted inputs
+- `album_versions`: persisted draft/proof versions
+- `version_spreads` and `version_spread_images`: immutable spread snapshots for a saved version
+- `proof_links`: public tokenized proof access
+- `proof_comments`: client feedback tied to proof links and optional spreads
+- `offers` and `offer_items`: manual package proposals
+- `orders` and `order_items`: manual payment/fulfillment tracking
+- `studio_branding`: white-label studio presentation
 
-### 3. Album Export
+### Workflow statuses
 
-```
-Gallery "Album Builder" tab
-  → generateAutoLayout() chunks photos into spreads
-  → User customizes (re-shuffle, background colors)
-  → "Export for Proofing" button
-    → Supabase inserts: album → spreads → image_slots
-  → Client receives proof link (/proof/:id)
-    → Paginated spread viewer + comment sidebar
-```
+Projects and downstream entities align on:
 
----
+- `draft`
+- `client_review`
+- `changes_requested`
+- `approved`
+- `payment_pending`
+- `paid`
+- `fulfillment_pending`
+- `shipped`
+- `delivered`
 
-## Database Schema (ERD)
+## Main Flows
 
-```
-auth.users
-  └─ profiles (1:1, cascade delete)
-       └─ projects (1:many, cascade delete)
-            ├─ photos (1:many, cascade delete)
-            │    ↑
-            │    └── image_slots.photo_id (FK)
-            │
-            └─ albums (1:many, cascade delete)
-                 └─ spreads (1:many, cascade delete)
-                      ├─ image_slots (1:many, cascade delete)
-                      └─ comments (1:many, cascade delete)
-```
+### 1. Upload and shortlist
 
-All tables use **Row Level Security (RLS)** to enforce multi-tenant isolation — each authenticated user can only access their own studio's data. The `comments` table is the exception: it allows public inserts for the client proofing workflow.
+1. The user uploads files in the `Photos` tab.
+2. `useUploadStore` writes originals and thumbnails to storage.
+3. The app inserts `album_inputs` rows and swaps optimistic items with persisted records.
+4. The user marks inputs as `shortlisted`, `excluded`, or `unreviewed`.
 
----
+### 2. Save draft and publish proof
 
-## Key Technology Decisions
+1. The user generates a spread layout from shortlisted inputs.
+2. Saving a draft creates a new `album_version`.
+3. The app snapshots spreads into `version_spreads` and `version_spread_images`.
+4. A `proof_link` is created immediately for the saved version.
+5. The project moves into `client_review`.
 
-| Decision | Rationale |
-|----------|-----------|
-| **Zustand** over Redux/Context | Minimal boilerplate, direct inter-store calls via `getState()`, no provider wrapping |
-| **Optimistic UI** for uploads | Users see thumbnails instantly — no waiting for upload + DB round-trip |
-| **Client-side thumbnails** | Canvas-resized WebP prevents loading 1000+ full-res images into browser memory |
-| **Dual storage** (full + thumb) | Avoids expensive CDN image transforms — free tier friendly |
-| **Soft delete** for projects | Uses a SECURITY DEFINER function to avoid PostgREST RETURNING+RLS conflicts |
-| **Route group** `(dashboard)` | Shared sidebar layout without polluting the URL path |
-| **Mock Rekognition** fallback | Allows full development flow without AWS costs during feature development |
+### 3. Convert approval into revenue operations
 
----
+1. The studio creates an `offer` after proof review.
+2. The offer can be converted into an `order`.
+3. The order is advanced manually through payment and fulfillment states.
+4. Project status is updated to match the order lifecycle.
 
-## Environment Variables
+## Notes
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=       # Supabase project URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=  # Supabase anonymous JWT key
-AWS_REGION=                     # AWS region for Rekognition (default: us-east-1)
-AWS_ACCESS_KEY_ID=              # AWS IAM access key
-AWS_SECRET_ACCESS_KEY=          # AWS IAM secret key
-```
-
----
-
-## Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start Next.js dev server |
-| `npm run build` | Production build |
-| `npm run start` | Start production server |
-| `npm run lint` | Run ESLint |
+- The old gallery-first prototype is no longer the design center.
+- Remote Google font fetching was removed from the root layout so local builds work in restricted environments.
+- Next.js 16 App Router guidance in `node_modules/next/dist/docs/` should be treated as the source of truth for file conventions and server/client boundaries.

@@ -2,7 +2,10 @@ html,
 body {
   padding: 0;
   margin: 0;
-  background-color: #0d1117;
+  min-height: 100%;
+  background-color: #0f111a;
+  color: #f6efe8;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
 * {
@@ -10,6 +13,9 @@ body {
 }
 
 :root {
+  --font-geist-sans: "Avenir Next", "Segoe UI", sans-serif;
+  --font-geist-mono: "SFMono-Regular", "SF Mono", monospace;
+
   /* Dark theme tokens */
   --background: #0d1117;
   --foreground: #c9d1d9;
@@ -20,4 +26,8 @@ body {
   /* Brand / primary */
   --primary: #58a6ff;
   --primary-foreground: #0d1117;
+}
+
+a {
+  color: inherit;
 }

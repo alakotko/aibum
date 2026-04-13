@@ -1,69 +1,56 @@
-# AI Photo Album Web App for Photographers
+# Albumin
 
-A lean, web-native AI photo deliverable platform designed to accelerate professional photographers' workflows. This application automates the most time-consuming aspects of post-production by offering fast album creation, structured client proofing, and a centralized workspace to manage it all—without leaving the browser.
+Albumin is a workflow-first white-label album sales app for photographers. The product centers on one path: upload project photos, shortlist the album set, generate a draft version, share a branded proof link, turn the approved package into a manual order, and track fulfillment through delivery.
 
-## ✨ Core Features
+## Current MVP Shape
 
-* **AI Curation & Selection:** Automates technical filtering (blur, blink, exposure detection) and groups similar images.
-* **Auto-Draft Album Builder:** Automatically generates complete album spreads from shortlists, featuring a spread-based canvas editor with templates, presets, and manual overrides.
-* **Streamlined Client Proofing:** Shareable proof links allowing clients to review, comment, and approve specific spreads with clear version tracking.
-* **Rapid Bulk Uploading:** Non-blocking multi-file upload with background processing and thumbnail generation.
-* **Studio Workspace:** Role-based access (Owner/Client) and dashboard for managing event projects.
+- **Projects** are the operational hub for a shoot or wedding.
+- **Album inputs** store uploaded source images plus shortlist state and AI quality flags.
+- **Draft versions** persist proofable album versions with spread snapshots.
+- **Proof links** publish a public client-facing review surface backed by Supabase data.
+- **Offers and orders** model manual package selection, payment tracking, and fulfillment handoff.
+- **Studio branding** powers the white-label proof experience.
 
-## 🛠️ Technology Stack
+## Workflow
 
-* **Framework:** [Next.js](https://nextjs.org/) (App Router, React 19)
-* **State Management:** [Zustand](https://zustand-demo.pmnd.rs/) for efficient, client-side UI state.
-* **Database & Auth:** [Supabase](https://supabase.com/) for secure multi-tenant persistence and user authentication.
-* **AI Engine:** [AWS Rekognition](https://aws.amazon.com/rekognition/) for analyzing image quality and technical filtering.
+1. Create a project.
+2. Upload photos into `album_inputs`.
+3. Shortlist the photos that should feed the album.
+4. Save a draft version and automatically publish a proof link.
+5. Collect comments on `/proof/[slug]`.
+6. Create an offer and convert it into a manual order.
+7. Advance the order through `payment_pending` → `paid` → `fulfillment_pending` → `shipped` → `delivered`.
 
-## 🚀 Getting Started
+## Stack
 
-### Prerequisites
+- Next.js 16 App Router
+- React 19
+- Supabase Auth, Postgres, Storage, and RLS
+- Zustand for upload/input selection state
+- AWS Rekognition endpoint for technical photo flags
 
-* Node.js v20+
-* A Supabase project (for Authentication & PostgreSQL Database)
-* An AWS Account (for Rekognition API access)
+## Local Setup
 
-### Installation
+1. Install dependencies with `npm install`.
+2. Create `.env.local` with:
 
-1. **Clone the repository and install dependencies:**
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+AWS_REGION=your_aws_region
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+```
 
-   ```bash
-   npm install
-   ```
+3. Run `npm run dev`.
+4. Apply the Supabase migrations before exercising the new workflow schema.
 
-2. **Set up Environment Variables:**
+## What Is Explicitly Deferred
 
-   Create a `.env.local` file in the root directory and ensure the following keys are populated:
+- Hosted gallery replacement as a core MVP surface
+- Slideshow builder
+- Social export
+- Direct print lab API routing
+- Full free-form client editing inside proofs
 
-   ```env
-   # Supabase Configuration
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-
-   # AWS Rekognition Configuration
-   AWS_REGION=your_aws_region
-   AWS_ACCESS_KEY_ID=your_aws_access_key
-   AWS_SECRET_ACCESS_KEY=your_aws_secret_key
-   ```
-
-3. **Run the Development Server:**
-
-   ```bash
-   npm run dev
-   ```
-
-4. **Open the App:**
-
-   Navigate to [http://localhost:3000](http://localhost:3000) in your browser.
-
-## 📈 Roadmap
-
-* **Phase 1 (MVP):** Core upload, AI curation, album builder, and client proofing. *(Current)*
-* **Phase 1.5:** Slideshow builder and social media export.
-* **Phase 2:** Real-time multiplayer editing, lab/print integrations, white-label galleries, and custom domains.
-
----
-
-*Designed and engineered for speed, enabling photographers to get from final selection to client approval in record time.*
+The repo is intentionally optimized for the album proofing and sales workflow, not for a gallery-first product direction.

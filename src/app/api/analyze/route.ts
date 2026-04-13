@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { RekognitionClient, DetectFacesCommand, DetectLabelsCommand, DetectFacesCommandInput } from '@aws-sdk/client-rekognition';
+import { RekognitionClient, DetectFacesCommand, type DetectFacesCommandInput } from '@aws-sdk/client-rekognition';
 
 // Initialize the AWS Rekognition client using environment variables
 // Note: In production you'd ensure these exist, but we mock graceful fallbacks for local dev without keys
@@ -17,7 +17,7 @@ const rekognitionClient = hasAwsKeys
 
 export async function POST(req: Request) {
   try {
-    const { imageUrls } = await req.json();
+    const { imageUrls } = (await req.json()) as { imageUrls?: string[] };
 
     if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
       return NextResponse.json({ error: 'Missing imageUrls array' }, { status: 400 });
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
         };
         const faceData = await rekognitionClient.send(new DetectFacesCommand(faceParams));
 
-        let flags: { type: string, confidence: number }[] = [];
+        const flags: { type: string, confidence: number }[] = [];
 
         // Map AWS data to our business logic flags
         if (faceData.FaceDetails && faceData.FaceDetails.length > 0) {
@@ -95,16 +95,16 @@ export async function POST(req: Request) {
         const uniqueFlags = Object.entries(uniqueFlagsObj).map(([type, confidence]) => ({ type, confidence }));
 
         return { url, flags: uniqueFlags };
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error analyzing image:', err);
-        return { url, flags: [], error: err.message };
+        return { url, flags: [], error: err instanceof Error ? err.message : 'Unknown error' };
       }
     }));
 
     return NextResponse.json({ results, isMock: false });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('API Error in /analyze:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

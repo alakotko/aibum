@@ -1,12 +1,21 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
+import StatusBadge from '@/components/workflow/StatusBadge';
+import type { WorkflowStatus } from '@/types/workflow';
 import styles from './projects.module.css';
 
+type ProjectCard = {
+  id: string;
+  title: string;
+  created_at: string;
+  status: WorkflowStatus;
+};
+
 export default function ProjectsDashboard() {
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<ProjectCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
@@ -14,25 +23,25 @@ export default function ProjectsDashboard() {
   const router = useRouter();
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       router.push('/login');
       return;
     }
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('projects')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (data) setProjects(data);
+    if (data) setProjects(data as ProjectCard[]);
     setLoading(false);
-  };
+  }, [router, supabase]);
+
+  useEffect(() => {
+    void fetchProjects();
+  }, [fetchProjects]);
 
   const handleCreateProject = async () => {
     setCreating(true);
@@ -55,6 +64,7 @@ export default function ProjectsDashboard() {
         .from('projects')
         .insert({
           title,
+          status: 'draft',
           studio_id: session.user.id
         })
         .select()
@@ -62,11 +72,11 @@ export default function ProjectsDashboard() {
 
       if (projErr) throw projErr;
 
-      router.push(`/projects/${project.id}/gallery`);
+      router.push(`/projects/${project.id}`);
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert('Failed to construct project tables natively: ' + e.message);
+      alert('Failed to construct project tables natively: ' + (e instanceof Error ? e.message : 'Unknown error'));
       setCreating(false);
     }
   };
@@ -88,9 +98,9 @@ export default function ProjectsDashboard() {
 
       setProjects(prev => prev.filter(p => p.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      alert('Failed to delete project: ' + e.message);
+      alert('Failed to delete project: ' + (e instanceof Error ? e.message : 'Unknown error'));
     } finally {
       setDeleting(false);
     }
@@ -116,10 +126,12 @@ export default function ProjectsDashboard() {
         <div className={styles.grid}>
           {projects.map(p => (
             <div key={p.id} className={styles.cardWrapper}>
-              <Link href={`/projects/${p.id}/gallery`} className={styles.card}>
+              <Link href={`/projects/${p.id}`} className={styles.card}>
                 <div className={styles.cardTitle}>{p.title}</div>
                 <div className={styles.cardMeta}>{new Date(p.created_at).toLocaleDateString()}</div>
-                <div className={styles.status}>{p.status}</div>
+                <div className={styles.status}>
+                  <StatusBadge status={p.status as WorkflowStatus} />
+                </div>
               </Link>
               <button
                 id={`delete-project-${p.id}`}

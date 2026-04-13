@@ -71,7 +71,8 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     const optimisticPhotos = newItems.map(item => ({
       id: item.id,
       url: item.localPreviewUrl,
-      status: 'pending' as const
+      filename: item.file.name,
+      selectionStatus: 'unreviewed' as const
     }));
     useGalleryStore.getState().addOptimisticPhotos(optimisticPhotos);
   },
@@ -137,13 +138,14 @@ export const useUploadStore = create<UploadState>((set, get) => ({
 
         // Insert into Database
         const { data: dbData, error: dbError } = await supabase
-          .from('photos')
+          .from('album_inputs')
           .insert({
             project_id: projectId,
             storage_path: publicUrl,
             thumbnail_path: thumbnailPublicUrl ?? null,
             filename: currentItem.file.name,
-            status: 'processed'
+            selection_status: 'unreviewed',
+            ai_flags: []
           })
           .select()
           .single();
@@ -160,19 +162,26 @@ export const useUploadStore = create<UploadState>((set, get) => ({
         // SWAP the Optimistic local photo with the REAL Database photo in GalleryStore!
         useGalleryStore.getState().swapOptimisticPhoto(currentItem.id, {
           id: dbData.id,
+          filename: dbData.filename,
           url: publicUrl,
           thumbnailUrl: thumbnailPublicUrl,
-          status: 'accepted'
+          selectionStatus: dbData.selection_status
         });
 
         // Queue URL for batched AI analysis (debounced to avoid 1 call per photo)
         scheduleAnalysis(publicUrl);
 
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Upload failed for item", currentItem.id, err);
         set(state => ({
           queue: state.queue.map(item =>
-            item.id === currentItem.id ? { ...item, status: 'error', errorDetails: err.message } : item
+            item.id === currentItem.id
+              ? {
+                  ...item,
+                  status: 'error',
+                  errorDetails: err instanceof Error ? err.message : 'Unknown error',
+                }
+              : item
           )
         }));
       }

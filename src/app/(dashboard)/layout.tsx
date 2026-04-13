@@ -6,14 +6,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className={styles.container}>
       <aside className={styles.sidebar}>
-        <div className={styles.brand}>Album AI</div>
+        <div className={styles.brand}>
+          <span className={styles.brandMark}>A</span>
+          <div>
+            <div>Albumin</div>
+            <small>White-label album sales</small>
+          </div>
+        </div>
         <nav className={styles.nav}>
           <Link href="/projects" className={styles.navLink}>Projects</Link>
-          <Link href="/galleries" className={styles.navLink}>Galleries</Link>
+          <Link href="/orders" className={styles.navLink}>Orders</Link>
+          <Link href="/branding" className={styles.navLink}>Branding</Link>
           <Link href="/settings" className={styles.navLink}>Settings</Link>
         </nav>
         <div className={styles.footer}>
-          <button className={styles.logoutBtn}>Log out</button>
+          <div className={styles.footerNote}>Workflow-first foundation</div>
         </div>
       </aside>
       <main className={styles.main}>

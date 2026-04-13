@@ -1,0 +1,40 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+
+.neutral {
+  background: rgba(230, 196, 149, 0.14);
+  color: #ffd8a8;
+  border-color: rgba(230, 196, 149, 0.28);
+}
+
+.review {
+  background: rgba(122, 162, 247, 0.14);
+  color: #9cc7ff;
+  border-color: rgba(122, 162, 247, 0.28);
+}
+
+.alert {
+  background: rgba(242, 129, 129, 0.14);
+  color: #ffb3b3;
+  border-color: rgba(242, 129, 129, 0.28);
+}
+
+.success {
+  background: rgba(97, 196, 141, 0.14);
+  color: #b4f2ca;
+  border-color: rgba(97, 196, 141, 0.28);
+}
+
+.delivery {
+  background: rgba(163, 118, 255, 0.14);
+  color: #d9bcff;
+  border-color: rgba(163, 118, 255, 0.28);
+}
