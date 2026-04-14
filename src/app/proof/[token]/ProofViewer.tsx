@@ -4,8 +4,18 @@ import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import GalleryImage from '@/app/(dashboard)/projects/[id]/gallery/GalleryImage';
-import type { LoadedProof, ProofCommentRecord } from '@/types/proof';
+import type { LoadedProof, ProofCommentRecord, ProofEventRecord } from '@/types/proof';
 import styles from './proof.module.css';
+
+function formatProofStatus(status: string) {
+  return status.replaceAll('_', ' ');
+}
+
+function getProofEventLabel(eventType: ProofEventRecord['eventType']) {
+  if (eventType === 'proof_sent') return 'Proof sent';
+  if (eventType === 'changes_requested') return 'Changes requested';
+  return 'Approved';
+}
 
 export default function ProofViewer({ initialProof }: { initialProof: LoadedProof }) {
   const [proof, setProof] = useState(initialProof);
@@ -13,14 +23,20 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
   const [authorName, setAuthorName] = useState('');
   const [spreadComment, setSpreadComment] = useState('');
   const [generalComment, setGeneralComment] = useState('');
+  const [decisionNote, setDecisionNote] = useState('');
   const [isSubmittingSpread, setIsSubmittingSpread] = useState(false);
   const [isSubmittingGeneral, setIsSubmittingGeneral] = useState(false);
+  const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
+  const [isConfirmingApproval, setIsConfirmingApproval] = useState(false);
+  const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
 
   const activeSpread = proof.spreads[currentSpread];
   const activeSpreadComments = proof.comments.filter(
     (entry) => entry.commentScope === 'spread' && entry.versionSpreadId === activeSpread?.id
   );
   const generalComments = proof.comments.filter((entry) => entry.commentScope === 'general');
+  const canSubmitDecision = proof.proofStatus !== 'approved';
+  const canUseName = authorName.trim().length > 0;
 
   async function submitComment(scope: ProofCommentRecord['commentScope']) {
     const content = scope === 'spread' ? spreadComment.trim() : generalComment.trim();
@@ -84,6 +100,61 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
     }
   }
 
+  async function submitDecision(decision: 'changes_requested' | 'approved') {
+    if (!canUseName) {
+      alert('Please add your name before submitting a proof decision.');
+      return;
+    }
+
+    try {
+      setIsSubmittingDecision(true);
+      const supabase = createClient();
+
+      const { data, error } = await supabase.rpc('submit_public_proof_decision', {
+        proof_token: proof.proofToken,
+        actor_name: authorName.trim(),
+        decision,
+        note: decisionNote.trim() || null,
+      });
+
+      const result = Array.isArray(data) ? data[0] : null;
+
+      if (error || !result) {
+        alert(`Failed to submit proof decision: ${error?.message ?? 'Unknown error'}`);
+        return;
+      }
+
+      const createdEvent: ProofEventRecord = {
+        id: result.event_id,
+        proofLinkId: result.proof_link_id,
+        albumVersionId: proof.albumVersionId,
+        projectId: proof.projectId,
+        eventType: result.event_type,
+        actorName: result.event_actor_name,
+        note: result.event_note,
+        createdAt: result.event_created_at,
+      };
+
+      setProof((current) => ({
+        ...current,
+        proofStatus: result.proof_status,
+        approvedAt: result.approved_at,
+        events: [createdEvent, ...current.events],
+      }));
+      setDecisionNote('');
+      setIsConfirmingApproval(false);
+      setDecisionFeedback(
+        decision === 'approved'
+          ? 'Final approval received. This version is now locked for the studio.'
+          : 'Change request sent to the studio.'
+      );
+    } catch (error: unknown) {
+      alert(`Failed to submit proof decision: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSubmittingDecision(false);
+    }
+  }
+
   function renderComment(entry: ProofCommentRecord) {
     const isResolved = Boolean(entry.resolvedAt);
     return (
@@ -97,6 +168,19 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
           {new Date(entry.createdAt).toLocaleString()}
           {entry.resolvedAt ? ` · Resolved ${new Date(entry.resolvedAt).toLocaleString()}` : ''}
         </time>
+      </article>
+    );
+  }
+
+  function renderEvent(entry: ProofEventRecord) {
+    return (
+      <article key={entry.id} className={styles.eventCard}>
+        <div className={styles.eventHeader}>
+          <span className={styles.commentStatus}>{getProofEventLabel(entry.eventType)}</span>
+          <time>{new Date(entry.createdAt).toLocaleString()}</time>
+        </div>
+        <div className={styles.eventMeta}>{entry.actorName}</div>
+        {entry.note ? <p>{entry.note}</p> : null}
       </article>
     );
   }
@@ -118,9 +202,10 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
           <p>{proof.proofSubheadline}</p>
         </div>
         <div className={styles.headerMeta}>
-          <span className={styles.status}>{proof.proofStatus}</span>
+          <span className={styles.status}>{formatProofStatus(proof.proofStatus)}</span>
           <strong>{proof.projectTitle}</strong>
           <span>{proof.versionTitle}</span>
+          {proof.approvedAt ? <span>Approved {new Date(proof.approvedAt).toLocaleString()}</span> : null}
           {proof.supportEmail ? <span>{proof.supportEmail}</span> : null}
         </div>
       </header>
@@ -164,6 +249,17 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
         </section>
 
         <aside className={styles.sidebar}>
+          <div className={styles.identityCard}>
+            <h2>Your name</h2>
+            <input
+              id="proof-comment-author"
+              placeholder="Your name"
+              value={authorName}
+              onChange={(event) => setAuthorName(event.target.value)}
+            />
+            <p className={styles.identityHint}>We’ll attach this name to comments and any final proof decision.</p>
+          </div>
+
           <div className={styles.commentPanel}>
             <div className={styles.panelHeader}>
               <h2>Spread feedback</h2>
@@ -180,12 +276,6 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
 
           <div className={styles.commentForm}>
             <h2>Comment on this spread</h2>
-            <input
-              id="proof-comment-author"
-              placeholder="Your name"
-              value={authorName}
-              onChange={(event) => setAuthorName(event.target.value)}
-            />
             <textarea
               id="proof-spread-comment-content"
               placeholder="Ask for swaps, crop changes, or note what you love."
@@ -231,6 +321,80 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
             >
               {isSubmittingGeneral ? 'Sending…' : 'Send general feedback'}
             </button>
+          </div>
+
+          <div className={styles.decisionPanel}>
+            <div className={styles.panelHeader}>
+              <h2>Final proof decision</h2>
+              <span className={styles.commentStatus}>{formatProofStatus(proof.proofStatus)}</span>
+            </div>
+            <p className={styles.decisionText}>
+              Request one more revision round or approve this version as the final album proof.
+            </p>
+            {!canUseName ? (
+              <p className={styles.empty}>Add your name above before you submit a final decision.</p>
+            ) : null}
+            {decisionFeedback ? <div className={styles.decisionFeedback}>{decisionFeedback}</div> : null}
+            <textarea
+              id="proof-decision-note"
+              placeholder="Optional note for the studio about the final decision."
+              value={decisionNote}
+              onChange={(event) => setDecisionNote(event.target.value)}
+              disabled={!canSubmitDecision || isSubmittingDecision}
+            />
+            {proof.proofStatus === 'approved' ? (
+              <div className={styles.approvedState}>
+                This proof is approved and locked.
+                {proof.approvedAt ? ` Finalized ${new Date(proof.approvedAt).toLocaleString()}.` : ''}
+              </div>
+            ) : (
+              <div className={styles.decisionActions}>
+                <button
+                  disabled={!canUseName || isSubmittingDecision}
+                  onClick={() => submitDecision('changes_requested')}
+                >
+                  {isSubmittingDecision ? 'Sending…' : 'Request Changes'}
+                </button>
+                {isConfirmingApproval ? (
+                  <>
+                    <button
+                      disabled={!canUseName || isSubmittingDecision}
+                      onClick={() => submitDecision('approved')}
+                    >
+                      {isSubmittingDecision ? 'Sending…' : 'Confirm Final Approval'}
+                    </button>
+                    <button
+                      className={styles.secondaryAction}
+                      disabled={isSubmittingDecision}
+                      onClick={() => setIsConfirmingApproval(false)}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    disabled={!canUseName || isSubmittingDecision}
+                    onClick={() => setIsConfirmingApproval(true)}
+                  >
+                    Approve Final
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className={styles.commentPanel}>
+            <div className={styles.panelHeader}>
+              <h2>Proof activity</h2>
+              <span className={styles.commentCount}>{proof.events.length}</span>
+            </div>
+            {proof.events.length === 0 ? (
+              <p className={styles.empty}>No proof activity yet.</p>
+            ) : (
+              <div className={styles.eventList}>
+                {proof.events.map(renderEvent)}
+              </div>
+            )}
           </div>
         </aside>
       </main>

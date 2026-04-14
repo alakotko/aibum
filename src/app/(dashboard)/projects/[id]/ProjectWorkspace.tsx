@@ -18,7 +18,7 @@ import {
   formatMoney,
   getWorkflowStatusMeta,
 } from '@/types/workflow';
-import type { ProofCommentRecord } from '@/types/proof';
+import type { ProofCommentRecord, ProofEventRecord } from '@/types/proof';
 import { createProofToken } from '@/utils/proofToken';
 import { generateAutoLayout, type LayoutSpread } from '@/utils/autoLayout';
 import StatusBadge from '@/components/workflow/StatusBadge';
@@ -119,6 +119,17 @@ type ProofCommentSummary = ProofCommentRecord & {
   spreadPageNumber?: number | null;
 };
 
+type ProofEventRow = {
+  id: string;
+  proof_link_id: string;
+  album_version_id: string;
+  project_id: string;
+  event_type: ProofEventRecord['eventType'];
+  actor_name: string;
+  note: string | null;
+  created_at: string;
+};
+
 const TAB_LABELS: Record<ProjectWorkspaceTab, string> = {
   photos: 'Photos',
   drafts: 'Drafts',
@@ -126,6 +137,10 @@ const TAB_LABELS: Record<ProjectWorkspaceTab, string> = {
   offers: 'Offers',
   orders: 'Orders',
 };
+
+function isPersistedUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 function proofUrl(origin: string, token: string) {
   return `${origin}/proof/${token}`;
@@ -167,6 +182,12 @@ function getProofCommentStats(comments: ProofCommentSummary[]) {
   );
 }
 
+function getProofEventLabel(eventType: ProofEventRecord['eventType']) {
+  if (eventType === 'proof_sent') return 'Proof sent';
+  if (eventType === 'changes_requested') return 'Changes requested';
+  return 'Approved';
+}
+
 export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const {
@@ -188,6 +209,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [offers, setOffers] = useState<OfferSummary[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [proofCommentsByLink, setProofCommentsByLink] = useState<Record<string, ProofCommentSummary[]>>({});
+  const [proofEventsByLink, setProofEventsByLink] = useState<Record<string, ProofEventRecord[]>>({});
   const [studioId, setStudioId] = useState<string | null>(null);
   const [branding, setBranding] = useState<BrandingState>({
     studioName: '',
@@ -318,10 +340,17 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     );
 
     if (proofRows.length > 0) {
-      const { data: comments } = await supabase
-        .from('proof_comments')
-        .select('id,proof_link_id,comment_scope,version_spread_id,author_name,content,created_at,resolved_at,resolved_by')
-        .in('proof_link_id', proofRows.map((row) => row.id));
+      const proofLinkIds = proofRows.map((row) => row.id);
+      const [{ data: comments }, { data: events }] = await Promise.all([
+        supabase
+          .from('proof_comments')
+          .select('id,proof_link_id,comment_scope,version_spread_id,author_name,content,created_at,resolved_at,resolved_by')
+          .in('proof_link_id', proofLinkIds),
+        supabase
+          .from('proof_events')
+          .select('id,proof_link_id,album_version_id,project_id,event_type,actor_name,note,created_at')
+          .in('proof_link_id', proofLinkIds),
+      ]);
 
       const groupedComments: Record<string, ProofCommentSummary[]> = {};
       for (const comment of (comments ?? []) as ProofCommentRow[]) {
@@ -347,8 +376,32 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       }
 
       setProofCommentsByLink(groupedComments);
+
+      const groupedEvents: Record<string, ProofEventRecord[]> = {};
+      for (const event of (events ?? []) as ProofEventRow[]) {
+        groupedEvents[event.proof_link_id] ??= [];
+        groupedEvents[event.proof_link_id].push({
+          id: event.id,
+          proofLinkId: event.proof_link_id,
+          albumVersionId: event.album_version_id,
+          projectId: event.project_id,
+          eventType: event.event_type,
+          actorName: event.actor_name,
+          note: event.note,
+          createdAt: event.created_at,
+        });
+      }
+
+      for (const proofRow of proofRows) {
+        groupedEvents[proofRow.id] = (groupedEvents[proofRow.id] ?? []).sort(
+          (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+        );
+      }
+
+      setProofEventsByLink(groupedEvents);
     } else {
       setProofCommentsByLink({});
+      setProofEventsByLink({});
     }
 
     setOffers(
@@ -441,13 +494,28 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   async function handleSaveDraft() {
-    const shortlisted = photos.filter((photo) => photo.selectionStatus === 'shortlisted');
-    const source = shortlisted.length > 0 ? shortlisted : photos;
-    if (source.length === 0) return;
+    const persistedPhotos = photos.filter((photo) => isPersistedUuid(photo.id));
+    const shortlisted = persistedPhotos.filter((photo) => photo.selectionStatus === 'shortlisted');
+    const source = shortlisted.length > 0 ? shortlisted : persistedPhotos;
+    if (source.length === 0) {
+      alert('Wait for photo uploads to finish before saving a draft.');
+      return;
+    }
 
     setIsSavingDraft(true);
+    let createdVersionId: string | null = null;
     try {
-      const nextVersion = (versions[0]?.versionNumber ?? 0) + 1;
+      const { data: latestVersionRow, error: latestVersionError } = await supabase
+        .from('album_versions')
+        .select('version_number')
+        .eq('project_id', projectId)
+        .order('version_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestVersionError) throw latestVersionError;
+
+      const nextVersion = (latestVersionRow?.version_number ?? 0) + 1;
       const layout = spreads.length > 0 ? spreads : generateAutoLayout(source);
 
       const { data: version, error: versionError } = await supabase
@@ -462,6 +530,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         .single();
 
       if (versionError) throw versionError;
+      createdVersionId = version.id;
 
       const { data: insertedSpreads, error: spreadsError } = await supabase
         .from('version_spreads')
@@ -506,6 +575,15 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       await loadWorkspaceData();
     } catch (error: unknown) {
       console.error(error);
+      if (createdVersionId) {
+        const { error: cleanupError } = await supabase
+          .from('album_versions')
+          .delete()
+          .eq('id', createdVersionId);
+        if (cleanupError) {
+          console.error('Failed to clean up draft version after save error', cleanupError);
+        }
+      }
       alert(`Failed to save draft: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSavingDraft(false);
@@ -969,10 +1047,27 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                     <span>{getProofCommentStats(proofCommentsByLink[link.id] ?? []).unresolved} unresolved</span>
                     <span>{getProofCommentStats(proofCommentsByLink[link.id] ?? []).general} general notes</span>
                     <span>{new Date(link.createdAt).toLocaleDateString()}</span>
+                    {link.approvedAt ? <span>Approved {new Date(link.approvedAt).toLocaleString()}</span> : null}
                     <span>
                       {link.expiresAt ? `Expires ${new Date(link.expiresAt).toLocaleString()}` : 'No expiry'}
                     </span>
                   </div>
+                  {(proofEventsByLink[link.id] ?? []).length > 0 ? (
+                    <div className={styles.timelineList}>
+                      {(proofEventsByLink[link.id] ?? []).map((event) => (
+                        <article key={event.id} className={styles.timelineItem}>
+                          <div className={styles.timelineHeader}>
+                            <span className={styles.pill}>{getProofEventLabel(event.eventType)}</span>
+                            <span>{new Date(event.createdAt).toLocaleString()}</span>
+                          </div>
+                          <div className={styles.timelineActor}>{event.actorName}</div>
+                          {event.note ? <p className={styles.timelineNote}>{event.note}</p> : null}
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={styles.metaText}>No proof timeline events yet.</p>
+                  )}
                   {(proofCommentsByLink[link.id] ?? []).length > 0 ? (
                     <div className={styles.commentStream}>
                       {(proofCommentsByLink[link.id] ?? []).map((comment) => (
@@ -1035,32 +1130,6 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                     </Link>
                     <button className={styles.buttonGhost} onClick={() => copyProofLink(link)}>
                       Copy URL
-                    </button>
-                    <button
-                      className={styles.buttonGhost}
-                      onClick={async () => {
-                        await supabase
-                          .from('proof_links')
-                          .update({ status: 'approved', approved_at: new Date().toISOString() })
-                          .eq('id', link.id);
-                        await updateProjectStatus('approved');
-                        await loadWorkspaceData();
-                      }}
-                    >
-                      Mark Approved
-                    </button>
-                    <button
-                      className={styles.buttonGhost}
-                      onClick={async () => {
-                        await supabase
-                          .from('proof_links')
-                          .update({ status: 'changes_requested' })
-                          .eq('id', link.id);
-                        await updateProjectStatus('changes_requested');
-                        await loadWorkspaceData();
-                      }}
-                    >
-                      Mark Changes Requested
                     </button>
                     {link.status === 'archived' || !link.isPublic ? (
                       <button
