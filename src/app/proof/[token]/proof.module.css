@@ -14,6 +14,8 @@
   background: #f4ede4;
   color: #43362f;
   font-size: 1.1rem;
+  padding: 2rem;
+  text-align: center;
 }
 
 .header {
@@ -108,7 +110,8 @@
 }
 
 .navActions button,
-.commentForm button {
+.commentForm button,
+.decisionActions button {
   border: none;
   border-radius: 999px;
   padding: 0.78rem 1.1rem;
@@ -119,7 +122,8 @@
 }
 
 .navActions button:disabled,
-.commentForm button:disabled {
+.commentForm button:disabled,
+.decisionActions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -130,6 +134,17 @@
   border-radius: 22px;
   display: grid;
   gap: 0.5rem;
+}
+
+.emptySpread {
+  min-height: 64vh;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: rgba(0, 0, 0, 0.05);
+  color: #6b5a52;
+  text-align: center;
+  padding: 2rem;
 }
 
 .layout_single {
@@ -164,6 +179,32 @@
   font-size: 1rem;
 }
 
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.9rem;
+}
+
+.panelHeader h2 {
+  margin: 0;
+}
+
+.commentCount,
+.commentStatus {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: rgba(31, 25, 22, 0.08);
+  color: #5a4c44;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .commentList {
   display: grid;
   gap: 0.75rem;
@@ -174,6 +215,17 @@
   background: rgba(255, 255, 255, 0.68);
   border: 1px solid rgba(31, 25, 22, 0.08);
   padding: 0.9rem 1rem;
+}
+
+.commentResolved {
+  opacity: 0.78;
+}
+
+.commentHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
 }
 
 .commentAuthor {
@@ -199,8 +251,26 @@
   gap: 0.75rem;
 }
 
+.identityCard,
+.decisionPanel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(31, 25, 22, 0.08);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.identityCard h2,
+.decisionPanel h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
 .commentForm input,
-.commentForm textarea {
+.commentForm textarea,
+.identityCard input,
+.decisionPanel textarea {
   width: 100%;
   border-radius: 16px;
   border: 1px solid rgba(31, 25, 22, 0.1);
@@ -213,6 +283,81 @@
 .commentForm textarea {
   min-height: 8rem;
   resize: vertical;
+}
+
+.decisionPanel textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.identityHint,
+.decisionText {
+  margin: 0;
+  color: #5a4c44;
+  line-height: 1.55;
+}
+
+.decisionFeedback,
+.approvedState {
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(31, 25, 22, 0.08);
+  background: rgba(255, 255, 255, 0.64);
+  line-height: 1.55;
+}
+
+.approvedState {
+  color: #3f2d24;
+  font-weight: 600;
+}
+
+.decisionActions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.secondaryAction {
+  background: rgba(31, 25, 22, 0.08) !important;
+  color: #3f2d24 !important;
+}
+
+.eventList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.eventCard {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(31, 25, 22, 0.08);
+  padding: 0.9rem 1rem;
+}
+
+.eventHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.eventMeta {
+  margin-top: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--proof-primary) 72%, #5b463d);
+}
+
+.eventCard p {
+  margin: 0.45rem 0 0;
+  line-height: 1.6;
+}
+
+.eventHeader time {
+  color: #6b5a52;
+  font-size: 0.82rem;
 }
 
 .empty {

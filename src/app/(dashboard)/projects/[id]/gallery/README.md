@@ -17,6 +17,7 @@ This route remains the media-focused gallery surface for a project. Album draft 
 - **Photo Selection** — Click to toggle, Shift+Click for range selection. Keyboard shortcuts: `Delete`/`Backspace` to delete, `Escape` to deselect.
 - **Thumbnail Scale Slider** — Adjustable grid thumbnail size (80px → 400px), persisted to `localStorage`.
 - **Photo Selection** — Supports shortlist/exclude tagging that feeds named shortlist sets and draft generation in the project workspace.
+- **Deterministic Draft Inputs** — The gallery feeds deterministic cover/interior layouts through `generateAutoLayout()` and stable spread keys in the workspace flow.
 
 ## Connections
 

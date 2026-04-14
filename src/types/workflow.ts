@@ -54,6 +54,9 @@ export interface SpreadImageRecord {
 export interface AlbumVersionSpreadRecord {
   id: string;
   pageNumber: number;
+  templateId: string;
+  spreadRole: 'cover' | 'interior';
+  spreadKey: string;
   layoutType: 'single' | 'split' | 'grid3' | 'auto';
   backgroundColor: string;
   images: SpreadImageRecord[];
@@ -87,12 +90,13 @@ export interface AlbumVersionSummary {
 
 export interface ProofLinkSummary {
   id: string;
-  slug: string;
+  token: string;
   title?: string | null;
   status: ProofLinkStatus;
   createdAt: string;
   approvedAt?: string | null;
   expiresAt?: string | null;
+  isPublic: boolean;
   albumVersionId: string;
 }
 
@@ -140,6 +144,17 @@ export const WORKFLOW_STATUS_META: Record<
   shipped: { label: 'Shipped', tone: 'delivery' },
   delivered: { label: 'Delivered', tone: 'success' },
 };
+
+export function getWorkflowStatusMeta(status: string | null | undefined) {
+  if (status && status in WORKFLOW_STATUS_META) {
+    return WORKFLOW_STATUS_META[status as WorkflowStatus];
+  }
+
+  return {
+    label: status ? status.replaceAll('_', ' ') : 'Unknown',
+    tone: 'neutral' as const,
+  };
+}
 
 export function formatMoney(cents: number, currency: string) {
   return new Intl.NumberFormat('en-US', {

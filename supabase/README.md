@@ -32,6 +32,6 @@ Public proofing hangs off:
 ## App Connections
 
 - Uploads and shortlist state write to `album_inputs`.
-- Draft saves write to `album_versions`, `version_spreads`, and `version_spread_images`.
+- Draft saves write to `album_versions`, `version_spreads`, and `version_spread_images`, with `version_spreads` carrying template metadata and deterministic spread keys.
 - Public proof pages load by `proof_links.slug`.
 - The dashboard and project workspace read `offers`, `orders`, and `studio_branding`.

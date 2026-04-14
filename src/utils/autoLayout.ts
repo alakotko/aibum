@@ -1,15 +1,15 @@
+import type { Photo } from '@/store/useGalleryStore';
+
 export const DRAFT_VARIANTS = ['classic', 'story', 'premium'] as const;
 
 export type DraftVariant = (typeof DRAFT_VARIANTS)[number];
-export type LayoutPhoto = {
-  id: string;
-  url: string;
-  filename?: string;
-  thumbnailUrl?: string;
-  selectionStatus: string;
-  aiScore?: number;
-  aiFlags?: string[];
-};
+export type LayoutPhoto = Photo;
+export type SpreadRole = 'cover' | 'interior';
+export type LayoutTemplateId =
+  | 'cover-single'
+  | 'interior-single'
+  | 'interior-split'
+  | 'interior-grid3';
 
 type LayoutType = 'single' | 'split' | 'grid3';
 
@@ -18,6 +18,14 @@ type VariantRules = {
   description: string;
   groupingPattern: readonly number[];
   background: (spreadIndex: number) => string;
+};
+
+type LayoutTemplateDefinition = {
+  id: LayoutTemplateId;
+  spreadRole: SpreadRole;
+  imageCount: 1 | 2 | 3;
+  layoutType: LayoutType;
+  backgroundColor: '#000000' | '#ffffff';
 };
 
 const VARIANT_RULES: Record<DraftVariant, VariantRules> = {
@@ -41,11 +49,45 @@ const VARIANT_RULES: Record<DraftVariant, VariantRules> = {
   },
 };
 
+export const LAYOUT_TEMPLATES: Record<LayoutTemplateId, LayoutTemplateDefinition> = {
+  'cover-single': {
+    id: 'cover-single',
+    spreadRole: 'cover',
+    imageCount: 1,
+    layoutType: 'single',
+    backgroundColor: '#000000',
+  },
+  'interior-single': {
+    id: 'interior-single',
+    spreadRole: 'interior',
+    imageCount: 1,
+    layoutType: 'single',
+    backgroundColor: '#ffffff',
+  },
+  'interior-split': {
+    id: 'interior-split',
+    spreadRole: 'interior',
+    imageCount: 2,
+    layoutType: 'split',
+    backgroundColor: '#ffffff',
+  },
+  'interior-grid3': {
+    id: 'interior-grid3',
+    spreadRole: 'interior',
+    imageCount: 3,
+    layoutType: 'grid3',
+    backgroundColor: '#ffffff',
+  },
+};
+
 export interface LayoutSpread {
-  id: string; // temp client identifier
+  id: string;
+  templateId: LayoutTemplateId;
+  spreadRole: SpreadRole;
+  spreadKey: string;
   images: LayoutPhoto[];
   layoutType: LayoutType;
-  backgroundColor: string; // #ffffff or #000000
+  backgroundColor: string;
 }
 
 export function getDraftVariantMeta(variant: DraftVariant) {
@@ -58,8 +100,55 @@ export function getAllowedLayoutTypes(imageCount: number): LayoutType[] {
   return ['grid3', 'split'];
 }
 
-function stableSpreadId(variant: DraftVariant, spreadIndex: number, images: LayoutPhoto[]) {
-  return `${variant}-${spreadIndex + 1}-${images.map((image) => image.id).join('-')}`;
+export function createSpreadKey({
+  spreadRole,
+  templateId,
+  imageIds,
+}: {
+  spreadRole: SpreadRole;
+  templateId: LayoutTemplateId;
+  imageIds: string[];
+}) {
+  return `${spreadRole}:${templateId}:${imageIds.join('|')}`;
+}
+
+export function getTemplateId(spreadRole: SpreadRole, layoutType: LayoutType): LayoutTemplateId {
+  if (spreadRole === 'cover') return 'cover-single';
+  if (layoutType === 'split') return 'interior-split';
+  if (layoutType === 'grid3') return 'interior-grid3';
+  return 'interior-single';
+}
+
+export function buildLayoutSpread({
+  spreadRole,
+  layoutType,
+  images,
+  backgroundColor,
+  id,
+}: {
+  spreadRole: SpreadRole;
+  layoutType: LayoutType;
+  images: LayoutPhoto[];
+  backgroundColor?: string;
+  id?: string;
+}): LayoutSpread {
+  const templateId = getTemplateId(spreadRole, layoutType);
+  const spreadKey = createSpreadKey({
+    spreadRole,
+    templateId,
+    imageIds: images.map((image) => image.id),
+  });
+
+  return {
+    id: id ?? spreadKey,
+    templateId,
+    spreadRole,
+    spreadKey,
+    images,
+    layoutType,
+    backgroundColor:
+      backgroundColor ?? (spreadRole === 'cover' ? LAYOUT_TEMPLATES['cover-single'].backgroundColor : LAYOUT_TEMPLATES[templateId].backgroundColor),
+  };
 }
 
 function resolveGroupSize(remaining: number, desired: number) {
@@ -73,26 +162,39 @@ function getLayoutType(images: LayoutPhoto[]): LayoutType {
 }
 
 export function generateAutoLayout(shortlist: LayoutPhoto[], variant: DraftVariant = 'classic'): LayoutSpread[] {
-  const spreads: LayoutSpread[] = [];
-  let index = 0;
-  let spreadIndex = 0;
+  if (shortlist.length === 0) return [];
+
   const rules = VARIANT_RULES[variant];
+  const spreads: LayoutSpread[] = [
+    buildLayoutSpread({
+      spreadRole: 'cover',
+      layoutType: 'single',
+      images: shortlist.slice(0, 1),
+      backgroundColor: LAYOUT_TEMPLATES['cover-single'].backgroundColor,
+    }),
+  ];
+
+  let index = 1;
+  let interiorSpreadIndex = 0;
 
   while (index < shortlist.length) {
-    const desiredGroupSize = rules.groupingPattern[spreadIndex % rules.groupingPattern.length];
+    const desiredGroupSize = rules.groupingPattern[interiorSpreadIndex % rules.groupingPattern.length];
     const remaining = shortlist.length - index;
     const groupSize = resolveGroupSize(remaining, desiredGroupSize);
     const chunk = shortlist.slice(index, index + groupSize);
+    const layoutType = getLayoutType(chunk);
 
-    spreads.push({
-      id: stableSpreadId(variant, spreadIndex, chunk),
-      images: chunk,
-      layoutType: getLayoutType(chunk),
-      backgroundColor: rules.background(spreadIndex),
-    });
+    spreads.push(
+      buildLayoutSpread({
+        spreadRole: 'interior',
+        layoutType,
+        images: chunk,
+        backgroundColor: rules.background(interiorSpreadIndex),
+      })
+    );
 
     index += groupSize;
-    spreadIndex += 1;
+    interiorSpreadIndex += 1;
   }
 
   return spreads;

@@ -17,11 +17,13 @@ Pure helper modules and service abstractions used across the application.
 
 | Function | Purpose |
 |----------|---------|
-| `generateAutoLayout(shortlist, variant)` | Takes an ordered array of `Photo` objects and produces deterministic `LayoutSpread` groups for the `classic`, `story`, or `premium` variant. |
+| `generateAutoLayout(shortlist, variant)` | Takes an ordered array of `Photo` objects and deterministically builds a dark cover followed by explicit interior layouts for the `classic`, `story`, or `premium` draft variant. |
 | `getDraftVariantMeta(variant)` | Returns the user-facing label and sequencing rules for a draft variant. |
 | `getAllowedLayoutTypes(imageCount)` | Returns the layouts that are valid for the current spread image count. |
+| `createSpreadKey({ spreadRole, templateId, imageIds })` | Builds a deterministic spread identity key from semantic role, template, and ordered image membership. |
+| `buildLayoutSpread(...)` | Rehydrates or creates a spread with template metadata, role, and stable spread key. |
 
-**Used by:** Project workspace drafts in `src/app/(dashboard)/projects/[id]/ProjectWorkspace.tsx` and the public proof page in `src/app/proof/[id]/`.
+**Used by:** Project workspace drafts in `src/app/(dashboard)/projects/[id]/ProjectWorkspace.tsx` and the public proof page in `src/app/proof/[token]/`.
 
 ## Subdirectory
 
@@ -40,7 +42,7 @@ Creates configured Supabase clients for different execution contexts.
 
 ```
 uploadProcessor.ts  ←── useUploadStore (src/store/)
-autoLayout.ts       ←── Gallery page, Proof page (src/app/)
+autoLayout.ts       ←── Project workspace, Proof page (src/app/)
 supabase/client.ts  ←── Stores, Pages, Components (browser-side)
 supabase/server.ts  ←── API routes, proxy.ts (server-side)
 ```
