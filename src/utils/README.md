@@ -19,7 +19,7 @@ Pure helper modules and service abstractions used across the application.
 |----------|---------|
 | `generateAutoLayout(shortlist)` | Takes an array of `Photo` objects and chunks them into `LayoutSpread` groups (1–3 images per spread) with randomized layout types (`single`, `split`, `grid3`) and background colors. |
 
-**Used by:** Gallery page (`src/app/(dashboard)/projects/[id]/gallery/`) for the Album Builder tab, and the Proof page (`src/app/proof/[id]/`).
+**Used by:** Gallery page (`src/app/(dashboard)/projects/[id]/gallery/`) for the Album Builder tab, and the Proof page (`src/app/proof/[token]/`).
 
 ## Subdirectory
 

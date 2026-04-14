@@ -18,6 +18,7 @@ import {
   WORKFLOW_STATUS_META,
   formatMoney,
 } from '@/types/workflow';
+import { createProofToken } from '@/utils/proofToken';
 import { generateAutoLayout, type LayoutSpread } from '@/utils/autoLayout';
 import StatusBadge from '@/components/workflow/StatusBadge';
 import GalleryImage from './gallery/GalleryImage';
@@ -57,6 +58,7 @@ type ProofLinkRow = {
   created_at: string;
   approved_at: string | null;
   expires_at: string | null;
+  is_public: boolean;
   album_version_id: string;
 };
 
@@ -102,8 +104,25 @@ const TAB_LABELS: Record<ProjectWorkspaceTab, string> = {
   orders: 'Orders',
 };
 
-function createProofSlug() {
-  return `proof-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
+function proofUrl(origin: string, token: string) {
+  return `${origin}/proof/${token}`;
+}
+
+function toDateTimeLocalValue(value: string | null | undefined) {
+  if (!value) return '';
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+}
+
+function toIsoFromLocalDateTime(value: string) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function getProofAccessState(link: ProofLinkSummary) {
+  if (link.status === 'archived' || !link.isPublic) return 'Archived';
+  if (link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now()) return 'Expired';
+  return 'Active';
 }
 
 function inferProjectStatusFromOrder(status: OrderSummary['status']): WorkflowStatus {
@@ -149,6 +168,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [isSavingBranding, setIsSavingBranding] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [origin, setOrigin] = useState('');
+  const [proofExpiryDrafts, setProofExpiryDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const saved = localStorage.getItem('workflow-thumb-size');
@@ -162,6 +182,12 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
+
+  useEffect(() => {
+    setProofExpiryDrafts(
+      Object.fromEntries(proofLinks.map((link) => [link.id, toDateTimeLocalValue(link.expiresAt)]))
+    );
+  }, [proofLinks]);
 
   const loadWorkspaceData = useCallback(async () => {
     const { data: authData } = await supabase.auth.getSession();
@@ -188,7 +214,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       versionIds.length > 0
         ? supabase
             .from('proof_links')
-            .select('id,slug,title,status,created_at,approved_at,expires_at,album_version_id')
+            .select('id,slug,title,status,created_at,approved_at,expires_at,is_public,album_version_id')
             .in('album_version_id', versionIds)
             .order('created_at', { ascending: false })
         : Promise.resolve({ data: [], error: null }),
@@ -244,12 +270,13 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     setProofLinks(
       proofRows.map((row) => ({
         id: row.id,
-        slug: row.slug,
+        token: row.slug,
         title: row.title,
         status: row.status,
         createdAt: row.created_at,
         approvedAt: row.approved_at,
         expiresAt: row.expires_at,
+        isPublic: row.is_public,
         albumVersionId: row.album_version_id,
       }))
     );
@@ -411,7 +438,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
       const { error: proofError } = await supabase.from('proof_links').insert({
         album_version_id: version.id,
-        slug: createProofSlug(),
+        slug: createProofToken(),
         title: `${project?.title ?? 'Project'} proof v${nextVersion}`,
         status: 'active',
       });
@@ -570,6 +597,43 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
 
     setUserFeedback('Studio branding saved.');
+  }
+
+  async function copyProofLink(link: ProofLinkSummary) {
+    try {
+      await navigator.clipboard.writeText(proofUrl(window.location.origin, link.token));
+      setUserFeedback('Proof URL copied.');
+    } catch (error: unknown) {
+      alert(`Failed to copy proof URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async function updateProofLink(linkId: string, updates: Partial<ProofLinkRow>, successMessage: string) {
+    try {
+      const { error } = await supabase.from('proof_links').update(updates).eq('id', linkId);
+      if (error) {
+        alert(`Failed to update proof link: ${error.message}`);
+        return;
+      }
+
+      setUserFeedback(successMessage);
+      await loadWorkspaceData();
+    } catch (error: unknown) {
+      alert(`Failed to update proof link: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async function saveProofExpiry(linkId: string) {
+    try {
+      const expiresAt = toIsoFromLocalDateTime(proofExpiryDrafts[linkId] ?? '');
+      await updateProofLink(
+        linkId,
+        { expires_at: expiresAt },
+        expiresAt ? 'Proof expiration updated.' : 'Proof expiration cleared.'
+      );
+    } catch (error: unknown) {
+      alert(`Failed to update proof expiration: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   const statusTone = project ? WORKFLOW_STATUS_META[project.status].label : 'Loading';
@@ -798,10 +862,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
               {proofLinks[0] ? (
                 <button
                   className={styles.buttonGhost}
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(`${window.location.origin}/proof/${proofLinks[0].slug}`);
-                    setUserFeedback('Latest proof URL copied.');
-                  }}
+                  onClick={() => copyProofLink(proofLinks[0])}
                 >
                   Copy Latest Proof
                 </button>
@@ -820,17 +881,53 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                 <div key={link.id} className={styles.dataCard}>
                   <div className={styles.cardTitleRow}>
                     <h3>{link.title || 'Client proof link'}</h3>
-                    <span className={styles.pill}>{link.status}</span>
+                    <div className={styles.badgeRow}>
+                      <span className={styles.pill}>{getProofAccessState(link)}</span>
+                      <span className={styles.pill}>{link.status}</span>
+                    </div>
                   </div>
-                  <div className={styles.proofUrl}>{`${origin}/proof/${link.slug}`}</div>
+                  <div className={styles.proofUrl}>{proofUrl(origin, link.token)}</div>
                   <div className={styles.metaRow}>
                     <span>{proofCommentCounts[link.id] ?? 0} comments</span>
                     <span>{new Date(link.createdAt).toLocaleDateString()}</span>
+                    <span>
+                      {link.expiresAt ? `Expires ${new Date(link.expiresAt).toLocaleString()}` : 'No expiry'}
+                    </span>
+                  </div>
+                  <div className={styles.expiryControls}>
+                    <div className={styles.field}>
+                      <label htmlFor={`proof-expires-${link.id}`}>Access expires</label>
+                      <input
+                        id={`proof-expires-${link.id}`}
+                        type="datetime-local"
+                        value={proofExpiryDrafts[link.id] ?? ''}
+                        onChange={(event) =>
+                          setProofExpiryDrafts((current) => ({ ...current, [link.id]: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className={styles.actionRow}>
+                      <button className={styles.buttonGhost} onClick={() => saveProofExpiry(link.id)}>
+                        Save Expiry
+                      </button>
+                      <button
+                        className={styles.buttonGhost}
+                        onClick={() => {
+                          setProofExpiryDrafts((current) => ({ ...current, [link.id]: '' }));
+                          void updateProofLink(link.id, { expires_at: null }, 'Proof expiration cleared.');
+                        }}
+                      >
+                        Clear Expiry
+                      </button>
+                    </div>
                   </div>
                   <div className={styles.actionRow}>
-                    <Link className={styles.linkText} href={`/proof/${link.slug}`} target="_blank">
+                    <Link className={styles.linkText} href={`/proof/${link.token}`} target="_blank">
                       Open proof
                     </Link>
+                    <button className={styles.buttonGhost} onClick={() => copyProofLink(link)}>
+                      Copy URL
+                    </button>
                     <button
                       className={styles.buttonGhost}
                       onClick={async () => {
@@ -857,6 +954,21 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                     >
                       Mark Changes Requested
                     </button>
+                    {link.status === 'archived' || !link.isPublic ? (
+                      <button
+                        className={styles.buttonGhost}
+                        onClick={() => updateProofLink(link.id, { status: 'active', is_public: true }, 'Proof link restored.')}
+                      >
+                        Restore Link
+                      </button>
+                    ) : (
+                      <button
+                        className={styles.buttonDanger}
+                        onClick={() => updateProofLink(link.id, { status: 'archived', is_public: false }, 'Proof link archived.')}
+                      >
+                        Archive Link
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

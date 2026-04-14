@@ -32,7 +32,7 @@ src/
 │   │       └── [id]/
 │   │           ├── gallery/          # /projects/[id]/gallery — Media Finder
 │   │           └── album-builder/    # /projects/[id]/album-builder
-│   ├── proof/[id]/                   # /proof/[id] — public client proofing
+│   ├── proof/[token]/                # /proof/[token] — public token-backed client proofing
 │   └── api/
 │       └── analyze/route.ts          # POST /api/analyze — Rekognition endpoint
 ├── components/
@@ -155,10 +155,8 @@ All tables use RLS. `studio_id = auth.uid()` is the ownership check. `deleted_at
 
 | Issue | Detail |
 |---|---|
-| `proof/[id]/page.tsx` references `useCullStore` | This store does not exist. The page should use `useGalleryStore` and fetch from Supabase. **Do not add a `useCullStore` file** — fix the import. |
 | `autoLayout.ts` imports `Photo` from `@/store/useCullStore` | Same issue — import `Photo` from `@/store/useGalleryStore` instead. |
 | Sidebar "Galleries" and "Settings" links are dead | `/galleries` and `/settings` routes do not exist yet. Do not wire up navigation until the pages are built. |
-| Comment submission in `proof/[id]` | Currently only `console.log`s. Must persist to `comments` table in Supabase. |
 | `tus-js-client` is installed but unused | Standard upload is used. Only switch to TUS if files exceed Supabase's standard upload size limit. |
 
 ---
@@ -199,9 +197,8 @@ All tables use RLS. `studio_id = auth.uid()` is the ownership check. `deleted_at
 - [x] Gallery Media Finder (scale slider, multi-select, delete, drag-drop)
 - [x] AI quality flagging endpoint (mocked)
 - [x] Album Builder (auto-layout, background colors, export to DB)
-- [ ] Fix `proof/[id]` to use `useGalleryStore` + Supabase (not `useCullStore`)
+- [x] Replace `proof/[id]` with a token-backed Supabase proof route
 - [ ] Fix `autoLayout.ts` stale import
-- [ ] Wire comment submission to `comments` DB table
 - [ ] Implement "Approve Spread" and "Finalize Book" actions
 - [ ] Generate shareable proof link from `/projects/[id]`
 - [ ] Hosted online gallery (`/gallery/[id]` public route)

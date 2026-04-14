@@ -11,7 +11,7 @@ This directory defines all pages, layouts, and server-side API routes using the 
 | `/projects` | `(dashboard)/projects/page.tsx` | Studio dashboard — lists all projects, create & soft-delete projects |
 | `/projects/[id]/gallery` | `(dashboard)/projects/[id]/gallery/page.tsx` | **Core workspace** — photo gallery grid + integrated Album Builder tab |
 | `/projects/[id]/album-builder` | `(dashboard)/projects/[id]/album-builder/page.tsx` | Legacy redirect → sends users to the unified gallery page |
-| `/proof/[id]` | `proof/[id]/page.tsx` | Public client-facing proofing page — view album spreads and leave comments |
+| `/proof/[token]` | `proof/[token]/page.tsx` | Public token-backed proof page — loads persisted spreads, branding, and comments |
 | `/api/analyze` | `api/analyze/route.ts` | Server-side API — runs AWS Rekognition (or mock) for blur/closed-eye detection |
 | `/api/projects/[id]` | `api/projects/[id]/` | Reserved project-level API (currently empty) |
 
