@@ -16,6 +16,10 @@ type VersionRow = {
   version_number: number;
   title: string;
   status: WorkflowStatus;
+  variant_key: AlbumVersionSummary['variantKey'];
+  is_active: boolean;
+  selection_set_id: string | null;
+  cover_title: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -53,7 +57,7 @@ export async function loadProjectProofData(projectId: string): Promise<ProjectPr
 
   const { data: versionRows } = await supabase
     .from('album_versions')
-    .select('id,version_number,title,status,created_at,updated_at')
+    .select('id,version_number,title,status,variant_key,is_active,selection_set_id,cover_title,created_at,updated_at')
     .eq('project_id', projectId)
     .order('version_number', { ascending: false });
 
@@ -62,6 +66,10 @@ export async function loadProjectProofData(projectId: string): Promise<ProjectPr
     versionNumber: row.version_number,
     title: row.title,
     status: row.status,
+    variantKey: row.variant_key,
+    isActive: row.is_active,
+    selectionSetId: row.selection_set_id,
+    coverTitle: row.cover_title,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     spreadCount: 0,

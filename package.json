@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/utils/autoLayout.test.ts"
+    "test": "node --test --experimental-strip-types src/**/*.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-rekognition": "^3.1024.0",

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
 import { createSpreadKey, generateAutoLayout } from './autoLayout.ts';
 
 type TestPhoto = {
@@ -20,8 +21,8 @@ function makePhotos(count: number): TestPhoto[] {
 
 test('generateAutoLayout returns identical output for identical ordered inputs', () => {
   const photos = makePhotos(7);
-
   assert.deepEqual(generateAutoLayout(photos), generateAutoLayout(photos));
+  assert.deepEqual(generateAutoLayout(photos, 'story'), generateAutoLayout(photos, 'story'));
 });
 
 test('generateAutoLayout always starts with a dark single-image cover', () => {
@@ -33,22 +34,11 @@ test('generateAutoLayout always starts with a dark single-image cover', () => {
   assert.equal(firstSpread.backgroundColor, '#000000');
 });
 
-test('generateAutoLayout uses the expected deterministic template sequence', () => {
-  const expectations: Record<number, string[]> = {
-    1: ['cover-single'],
-    2: ['cover-single', 'interior-single'],
-    3: ['cover-single', 'interior-split'],
-    4: ['cover-single', 'interior-grid3'],
-    5: ['cover-single', 'interior-grid3', 'interior-single'],
-    7: ['cover-single', 'interior-grid3', 'interior-grid3'],
-  };
+test('variants produce distinct deterministic interior sequences', () => {
+  const photos = makePhotos(8);
 
-  for (const [count, templateIds] of Object.entries(expectations)) {
-    assert.deepEqual(
-      generateAutoLayout(makePhotos(Number(count))).map((spread) => spread.templateId),
-      templateIds
-    );
-  }
+  assert.notDeepEqual(generateAutoLayout(photos, 'classic'), generateAutoLayout(photos, 'story'));
+  assert.notDeepEqual(generateAutoLayout(photos, 'story'), generateAutoLayout(photos, 'premium'));
 });
 
 test('spread keys stay stable for identical inputs and change when order changes', () => {

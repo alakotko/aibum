@@ -41,7 +41,7 @@ src/
 │   ├── useGalleryStore.ts            # Photo state, selection, delete, AI flags
 │   └── useUploadStore.ts             # Upload queue, thumbnail gen, Storage pipeline
 └── utils/
-    ├── autoLayout.ts                 # Deterministic cover/interior spread generator
+    ├── autoLayout.ts                 # Deterministic cover/interior spread generator with Classic / Story / Premium variants
     ├── uploadProcessor.ts            # Canvas thumbnail + dataUrl→Blob helpers
     └── supabase/
         ├── client.ts                 # Browser Supabase client
@@ -157,6 +157,7 @@ All tables use RLS. `studio_id = auth.uid()` is the ownership check. `deleted_at
 |---|---|
 | `autoLayout.ts` imports `Photo` from `@/store/useCullStore` | Same issue — import `Photo` from `@/store/useGalleryStore` instead. |
 | Sidebar "Galleries" and "Settings" links are dead | `/galleries` and `/settings` routes do not exist yet. Do not wire up navigation until the pages are built. |
+| Comment submission in `proof/[token]` | Must persist to `proof_comments` in Supabase, scoped to the active proof link / spread. |
 | `tus-js-client` is installed but unused | Standard upload is used. Only switch to TUS if files exceed Supabase's standard upload size limit. |
 
 ---
@@ -198,7 +199,8 @@ All tables use RLS. `studio_id = auth.uid()` is the ownership check. `deleted_at
 - [x] AI quality flagging endpoint (mocked)
 - [x] Album Builder (deterministic auto-layout, export to DB)
 - [x] Replace `proof/[id]` with a token-backed Supabase proof route
-- [ ] Fix `autoLayout.ts` stale import
+- [x] Fix `autoLayout.ts` stale import
+- [x] Wire comment submission to `proof_comments` DB table
 - [ ] Implement "Approve Spread" and "Finalize Book" actions
 - [ ] Generate shareable proof link from `/projects/[id]`
 - [ ] Hosted online gallery (`/gallery/[id]` public route)

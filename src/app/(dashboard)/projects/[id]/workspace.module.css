@@ -265,10 +265,62 @@
   color: var(--foreground);
 }
 
+.shortlistBar {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.shortlistCard {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .twoColumn {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
   gap: 1rem;
+}
+
+.variantGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.variantCard {
+  display: grid;
+  gap: 0.45rem;
+  text-align: left;
+  padding: 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(204, 120, 92, 0.16), transparent 45%),
+    rgba(255, 255, 255, 0.03);
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.variantCardActive {
+  border-color: rgba(204, 120, 92, 0.45);
+  box-shadow: 0 0 0 1px rgba(204, 120, 92, 0.3);
+}
+
+.variantTitle {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.variantDescription {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .albumCanvas {
@@ -287,9 +339,22 @@
 .spreadHeader {
   display: flex;
   justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 0.9rem;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.stackTight {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.spreadActions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.8rem;
 }
 
 .spreadPreview {
@@ -325,6 +390,35 @@
   min-height: 8rem;
 }
 
+.spreadSlotSelected {
+  outline: 2px solid rgba(224, 154, 121, 0.88);
+  outline-offset: -2px;
+}
+
+.slotActions {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.slotButton {
+  border: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(15, 17, 26, 0.82);
+  color: #f7e4d8;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.slotButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .stack {
   display: grid;
   gap: 0.85rem;
@@ -333,6 +427,13 @@
 .cardList {
   display: grid;
   gap: 0.85rem;
+}
+
+.actionCluster {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .dataCard {
@@ -508,6 +609,16 @@
   color: var(--muted);
 }
 
+.pillMuted {
+  display: inline-flex;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
 .brandingForm {
   display: grid;
   gap: 1rem;
@@ -533,6 +644,7 @@
 }
 
 .field input,
+.field select,
 .field textarea {
   width: 100%;
   border-radius: 16px;
@@ -548,6 +660,62 @@
   resize: vertical;
 }
 
+.photoPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.7rem;
+}
+
+.photoPickerButton {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.45rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.photoPickerButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.photoPickerLabel {
+  font-size: 0.76rem;
+  color: var(--muted);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compareGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.compareColumn {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.compareSpreads {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.compareSpreadCard {
+  display: grid;
+  gap: 0.55rem;
+}
+
 @media (max-width: 1100px) {
   .hero {
     flex-direction: column;
@@ -560,6 +728,15 @@
   }
 
   .twoColumn {
+    grid-template-columns: 1fr;
+  }
+
+  .variantGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .shortlistBar,
+  .compareGrid {
     grid-template-columns: 1fr;
   }
 

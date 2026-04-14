@@ -62,11 +62,27 @@ export interface AlbumVersionSpreadRecord {
   images: SpreadImageRecord[];
 }
 
+export interface SelectionSetSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  itemCount: number;
+  isActive: boolean;
+  coverAlbumInputId?: string | null;
+  coverFilename?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
 export interface AlbumVersionSummary {
   id: string;
   versionNumber: number;
   title: string;
   status: WorkflowStatus;
+  variantKey: 'classic' | 'story' | 'premium';
+  isActive: boolean;
+  selectionSetId?: string | null;
+  coverTitle?: string | null;
   createdAt: string;
   updatedAt: string;
   spreadCount: number;
