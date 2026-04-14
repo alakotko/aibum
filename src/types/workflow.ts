@@ -71,12 +71,13 @@ export interface AlbumVersionSummary {
 
 export interface ProofLinkSummary {
   id: string;
-  slug: string;
+  token: string;
   title?: string | null;
   status: ProofLinkStatus;
   createdAt: string;
   approvedAt?: string | null;
   expiresAt?: string | null;
+  isPublic: boolean;
   albumVersionId: string;
 }
 

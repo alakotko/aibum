@@ -351,6 +351,13 @@
   align-items: center;
 }
 
+.badgeRow {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .cardTitleRow h3,
 .dataCard h3 {
   margin: 0;
@@ -395,6 +402,11 @@
   background: rgba(0, 0, 0, 0.22);
   color: #f6dcc9;
   overflow: auto;
+}
+
+.expiryControls {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .commentBadge {

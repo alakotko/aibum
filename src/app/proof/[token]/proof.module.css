@@ -14,6 +14,8 @@
   background: #f4ede4;
   color: #43362f;
   font-size: 1.1rem;
+  padding: 2rem;
+  text-align: center;
 }
 
 .header {
@@ -130,6 +132,17 @@
   border-radius: 22px;
   display: grid;
   gap: 0.5rem;
+}
+
+.emptySpread {
+  min-height: 64vh;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: rgba(0, 0, 0, 0.05);
+  color: #6b5a52;
+  text-align: center;
+  padding: 2rem;
 }
 
 .layout_single {

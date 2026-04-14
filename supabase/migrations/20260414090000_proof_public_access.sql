@@ -1,0 +1,37 @@
+create policy "Public can read projects with active proof links."
+  on public.projects for select
+  using (exists (
+    select 1
+    from public.album_versions av
+    join public.proof_links pl on pl.album_version_id = av.id
+    where av.project_id = id
+      and pl.is_public = true
+      and pl.status in ('active', 'changes_requested', 'approved')
+      and (pl.expires_at is null or pl.expires_at > now())
+  ));
+
+create policy "Public can read album inputs with active proof links."
+  on public.album_inputs for select
+  using (exists (
+    select 1
+    from public.version_spread_images vsi
+    join public.version_spreads vs on vs.id = vsi.version_spread_id
+    join public.proof_links pl on pl.album_version_id = vs.album_version_id
+    where vsi.album_input_id = id
+      and pl.is_public = true
+      and pl.status in ('active', 'changes_requested', 'approved')
+      and (pl.expires_at is null or pl.expires_at > now())
+  ));
+
+create policy "Public can read studio branding with active proof links."
+  on public.studio_branding for select
+  using (exists (
+    select 1
+    from public.projects p
+    join public.album_versions av on av.project_id = p.id
+    join public.proof_links pl on pl.album_version_id = av.id
+    where p.studio_id = studio_id
+      and pl.is_public = true
+      and pl.status in ('active', 'changes_requested', 'approved')
+      and (pl.expires_at is null or pl.expires_at > now())
+  ));
