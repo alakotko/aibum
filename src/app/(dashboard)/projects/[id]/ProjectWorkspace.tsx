@@ -15,8 +15,8 @@ import type {
 } from '@/types/workflow';
 import {
   PROJECT_WORKSPACE_TABS,
-  WORKFLOW_STATUS_META,
   formatMoney,
+  getWorkflowStatusMeta,
 } from '@/types/workflow';
 import { createProofToken } from '@/utils/proofToken';
 import { generateAutoLayout, type LayoutSpread } from '@/utils/autoLayout';
@@ -636,7 +636,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
-  const statusTone = project ? WORKFLOW_STATUS_META[project.status].label : 'Loading';
+  const statusTone = project ? getWorkflowStatusMeta(project.status).label : 'Loading';
 
   return (
     <div className={styles.container}>
