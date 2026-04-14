@@ -17,9 +17,11 @@ Pure helper modules and service abstractions used across the application.
 
 | Function | Purpose |
 |----------|---------|
-| `generateAutoLayout(shortlist)` | Takes an array of `Photo` objects and chunks them into `LayoutSpread` groups (1–3 images per spread) with randomized layout types (`single`, `split`, `grid3`) and background colors. |
+| `generateAutoLayout(shortlist, variant)` | Takes an ordered array of `Photo` objects and produces deterministic `LayoutSpread` groups for the `classic`, `story`, or `premium` variant. |
+| `getDraftVariantMeta(variant)` | Returns the user-facing label and sequencing rules for a draft variant. |
+| `getAllowedLayoutTypes(imageCount)` | Returns the layouts that are valid for the current spread image count. |
 
-**Used by:** Gallery page (`src/app/(dashboard)/projects/[id]/gallery/`) for the Album Builder tab, and the Proof page (`src/app/proof/[id]/`).
+**Used by:** Project workspace drafts in `src/app/(dashboard)/projects/[id]/ProjectWorkspace.tsx` and the public proof page in `src/app/proof/[id]/`.
 
 ## Subdirectory
 

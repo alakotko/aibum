@@ -40,8 +40,8 @@ src/
 ├── store/
 │   ├── useGalleryStore.ts            # Photo state, selection, delete, AI flags
 │   └── useUploadStore.ts             # Upload queue, thumbnail gen, Storage pipeline
-└── utils/
-    ├── autoLayout.ts                 # Spread generator (single / split / grid3)
+    └── utils/
+    ├── autoLayout.ts                 # Deterministic draft generator (Classic / Story / Premium)
     ├── uploadProcessor.ts            # Canvas thumbnail + dataUrl→Blob helpers
     └── supabase/
         ├── client.ts                 # Browser Supabase client
@@ -155,10 +155,8 @@ All tables use RLS. `studio_id = auth.uid()` is the ownership check. `deleted_at
 
 | Issue | Detail |
 |---|---|
-| `proof/[id]/page.tsx` references `useCullStore` | This store does not exist. The page should use `useGalleryStore` and fetch from Supabase. **Do not add a `useCullStore` file** — fix the import. |
-| `autoLayout.ts` imports `Photo` from `@/store/useCullStore` | Same issue — import `Photo` from `@/store/useGalleryStore` instead. |
 | Sidebar "Galleries" and "Settings" links are dead | `/galleries` and `/settings` routes do not exist yet. Do not wire up navigation until the pages are built. |
-| Comment submission in `proof/[id]` | Currently only `console.log`s. Must persist to `comments` table in Supabase. |
+| Comment submission in `proof/[id]` | Must persist to `proof_comments` in Supabase, scoped to the active proof link / spread. |
 | `tus-js-client` is installed but unused | Standard upload is used. Only switch to TUS if files exceed Supabase's standard upload size limit. |
 
 ---
@@ -199,9 +197,9 @@ All tables use RLS. `studio_id = auth.uid()` is the ownership check. `deleted_at
 - [x] Gallery Media Finder (scale slider, multi-select, delete, drag-drop)
 - [x] AI quality flagging endpoint (mocked)
 - [x] Album Builder (auto-layout, background colors, export to DB)
-- [ ] Fix `proof/[id]` to use `useGalleryStore` + Supabase (not `useCullStore`)
-- [ ] Fix `autoLayout.ts` stale import
-- [ ] Wire comment submission to `comments` DB table
+- [x] Fix `proof/[id]` to use Supabase-backed workflow data
+- [x] Fix `autoLayout.ts` stale import
+- [x] Wire comment submission to `proof_comments` DB table
 - [ ] Implement "Approve Spread" and "Finalize Book" actions
 - [ ] Generate shareable proof link from `/projects/[id]`
 - [ ] Hosted online gallery (`/gallery/[id]` public route)
