@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createSpreadKey, generateAutoLayout } from './autoLayout.ts';
+import { createSpreadKey, createVersionSpreadKeys, generateAutoLayout } from './autoLayout.ts';
 
 type TestPhoto = {
   id: string;
@@ -61,5 +61,22 @@ test('createSpreadKey is based on role, template, and ordered image ids only', (
       imageIds: ['a', 'b'],
     }),
     'interior:interior-split:a|b'
+  );
+});
+
+test('createVersionSpreadKeys preserves first key and suffixes duplicate occurrences deterministically', () => {
+  assert.deepEqual(
+    createVersionSpreadKeys([
+      { spreadKey: 'interior:interior-split:a|b' },
+      { spreadKey: 'interior:interior-single:c' },
+      { spreadKey: 'interior:interior-split:a|b' },
+      { spreadKey: 'interior:interior-split:a|b' },
+    ]),
+    [
+      'interior:interior-split:a|b',
+      'interior:interior-single:c',
+      'interior:interior-split:a|b#2',
+      'interior:interior-split:a|b#3',
+    ]
   );
 });

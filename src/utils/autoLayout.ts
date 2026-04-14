@@ -112,6 +112,17 @@ export function createSpreadKey({
   return `${spreadRole}:${templateId}:${imageIds.join('|')}`;
 }
 
+export function createVersionSpreadKeys(spreads: Pick<LayoutSpread, 'spreadKey'>[]) {
+  const counts = new Map<string, number>();
+
+  return spreads.map((spread) => {
+    const occurrence = (counts.get(spread.spreadKey) ?? 0) + 1;
+    counts.set(spread.spreadKey, occurrence);
+
+    return occurrence === 1 ? spread.spreadKey : `${spread.spreadKey}#${occurrence}`;
+  });
+}
+
 export function getTemplateId(spreadRole: SpreadRole, layoutType: LayoutType): LayoutTemplateId {
   if (spreadRole === 'cover') return 'cover-single';
   if (layoutType === 'split') return 'interior-split';

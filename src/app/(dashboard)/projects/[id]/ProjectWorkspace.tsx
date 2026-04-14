@@ -22,6 +22,7 @@ import {
 import {
   DRAFT_VARIANTS,
   buildLayoutSpread,
+  createVersionSpreadKeys,
   generateAutoLayout,
   getAllowedLayoutTypes,
   getDraftVariantMeta,
@@ -1051,6 +1052,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           .eq('id', version.id);
       }
 
+      const persistedSpreadKeys = createVersionSpreadKeys(layout);
       const { data: insertedSpreads, error: spreadsError } = await supabase
         .from('version_spreads')
         .insert(
@@ -1059,7 +1061,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
             page_number: index + 1,
             template_id: spread.templateId,
             spread_role: spread.spreadRole,
-            spread_key: spread.spreadKey,
+            spread_key: persistedSpreadKeys[index],
             layout_type: spread.layoutType,
             background_color: spread.backgroundColor,
           }))
