@@ -6,7 +6,6 @@ import { createClient } from '@/utils/supabase/client';
 import { useGalleryStore } from '@/store/useGalleryStore';
 import { useUploadStore } from '@/store/useUploadStore';
 import type {
-  AlbumVersionSummary,
   OfferSummary,
   OrderSummary,
   ProjectWorkspaceTab,
@@ -15,10 +14,14 @@ import type {
 } from '@/types/workflow';
 import {
   PROJECT_WORKSPACE_TABS,
-  WORKFLOW_STATUS_META,
   formatMoney,
+  getWorkflowStatusMeta,
 } from '@/types/workflow';
+import type { ProjectProofData, ProjectProofLinkSummary } from '@/types/project-proof';
+import { createProofToken } from '@/utils/proofToken';
 import { generateAutoLayout, type LayoutSpread } from '@/utils/autoLayout';
+import { type ProjectProofCommentRow, type ProjectProofEventRow, buildProjectProofData } from '@/utils/projectProof';
+import { isProofResendable } from '@/utils/proofEvents';
 import StatusBadge from '@/components/workflow/StatusBadge';
 import GalleryImage from './gallery/GalleryImage';
 import styles from './workspace.module.css';
@@ -57,6 +60,7 @@ type ProofLinkRow = {
   created_at: string;
   approved_at: string | null;
   expires_at: string | null;
+  is_public: boolean;
   album_version_id: string;
 };
 
@@ -94,6 +98,12 @@ type InsertedSpreadRow = {
   id: string;
 };
 
+type VersionSpreadRow = {
+  id: string;
+  album_version_id: string;
+  page_number: number;
+};
+
 const TAB_LABELS: Record<ProjectWorkspaceTab, string> = {
   photos: 'Photos',
   drafts: 'Drafts',
@@ -102,8 +112,18 @@ const TAB_LABELS: Record<ProjectWorkspaceTab, string> = {
   orders: 'Orders',
 };
 
-function createProofSlug() {
-  return `proof-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
+function isPersistedUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function proofUrl(origin: string, token: string) {
+  return `${origin}/proof/${token}`;
+}
+
+function getProofAccessState(link: ProofLinkSummary) {
+  if (link.status === 'archived' || !link.isPublic) return 'Archived';
+  if (link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now()) return 'Expired';
+  return 'Active';
 }
 
 function inferProjectStatusFromOrder(status: OrderSummary['status']): WorkflowStatus {
@@ -130,11 +150,9 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [thumbSize, setThumbSize] = useState(220);
   const [spreads, setSpreads] = useState<LayoutSpread[]>([]);
   const [project, setProject] = useState<ProjectRecord | null>(null);
-  const [versions, setVersions] = useState<AlbumVersionSummary[]>([]);
-  const [proofLinks, setProofLinks] = useState<ProofLinkSummary[]>([]);
+  const [projectProof, setProjectProof] = useState<ProjectProofData | null>(null);
   const [offers, setOffers] = useState<OfferSummary[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [proofCommentCounts, setProofCommentCounts] = useState<Record<string, number>>({});
   const [studioId, setStudioId] = useState<string | null>(null);
   const [branding, setBranding] = useState<BrandingState>({
     studioName: '',
@@ -149,6 +167,9 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [isSavingBranding, setIsSavingBranding] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [origin, setOrigin] = useState('');
+  const versions = projectProof?.versions ?? [];
+  const proofLinks = versions.flatMap((version) => version.proofLinks);
+  const latestProofLink = projectProof?.latestProofLink ?? null;
 
   useEffect(() => {
     const saved = localStorage.getItem('workflow-thumb-size');
@@ -188,7 +209,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       versionIds.length > 0
         ? supabase
             .from('proof_links')
-            .select('id,slug,title,status,created_at,approved_at,expires_at,album_version_id')
+            .select('id,slug,title,status,created_at,approved_at,expires_at,is_public,album_version_id')
             .in('album_version_id', versionIds)
             .order('created_at', { ascending: false })
         : Promise.resolve({ data: [], error: null }),
@@ -216,57 +237,75 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
 
     const versionRows = (versionsRes.data ?? []) as VersionRow[];
+    const mappedVersions = versionRows.map((row) => ({
+      id: row.id,
+      versionNumber: row.version_number,
+      title: row.title,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      spreadCount: 0,
+    }));
     const spreadCountMap: Record<string, number> = {};
+    const spreadPageMap: Record<string, number> = {};
     if (versionIds.length > 0) {
       const { data: spreadRows } = await supabase
         .from('version_spreads')
-        .select('album_version_id')
+        .select('id,album_version_id,page_number')
         .in('album_version_id', versionIds);
 
-      for (const row of spreadRows ?? []) {
+      for (const row of (spreadRows ?? []) as VersionSpreadRow[]) {
         spreadCountMap[row.album_version_id] = (spreadCountMap[row.album_version_id] ?? 0) + 1;
+        spreadPageMap[row.id] = row.page_number;
       }
     }
-
-    setVersions(
-      versionRows.map((row) => ({
-        id: row.id,
-        versionNumber: row.version_number,
-        title: row.title,
-        status: row.status,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        spreadCount: spreadCountMap[row.id] ?? 0,
-      }))
-    );
 
     const proofRows = (proofLinksRes.data ?? []) as ProofLinkRow[];
-    setProofLinks(
-      proofRows.map((row) => ({
-        id: row.id,
-        slug: row.slug,
-        title: row.title,
-        status: row.status,
-        createdAt: row.created_at,
-        approvedAt: row.approved_at,
-        expiresAt: row.expires_at,
-        albumVersionId: row.album_version_id,
-      }))
-    );
+    const mappedProofLinks = proofRows.map((row) => ({
+      id: row.id,
+      token: row.slug,
+      title: row.title,
+      status: row.status,
+      createdAt: row.created_at,
+      approvedAt: row.approved_at,
+      expiresAt: row.expires_at,
+      isPublic: row.is_public,
+      albumVersionId: row.album_version_id,
+    }));
 
-    if (proofRows.length > 0) {
-      const { data: comments } = await supabase
-        .from('proof_comments')
-        .select('proof_link_id')
-        .in('proof_link_id', proofRows.map((row) => row.id));
-      const counts: Record<string, number> = {};
-      for (const comment of comments ?? []) {
-        counts[comment.proof_link_id] = (counts[comment.proof_link_id] ?? 0) + 1;
-      }
-      setProofCommentCounts(counts);
-    } else {
-      setProofCommentCounts({});
-    }
+    const proofLinkIds = proofRows.map((row) => row.id);
+    const [{ data: comments }, { data: events }] = await Promise.all([
+      proofLinkIds.length > 0
+        ? supabase
+            .from('proof_comments')
+            .select(
+              'id,proof_link_id,comment_scope,version_spread_id,author_name,content,created_at,resolved_at,resolved_by'
+            )
+            .in('proof_link_id', proofLinkIds)
+        : Promise.resolve({ data: [], error: null }),
+      proofLinkIds.length > 0
+        ? supabase
+            .from('proof_events')
+            .select('id,proof_link_id,album_version_id,project_id,event_type,actor_name,note,created_at')
+            .in('proof_link_id', proofLinkIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    setProjectProof(
+      buildProjectProofData({
+        projectId,
+        projectTitle: projectRes.data?.title ?? 'Project',
+        projectStatus: projectRes.data?.status ?? null,
+        versions: mappedVersions.map((version) => ({
+          ...version,
+          spreadCount: spreadCountMap[version.id] ?? 0,
+        })),
+        proofLinks: mappedProofLinks,
+        comments: (comments ?? []) as ProjectProofCommentRow[],
+        events: (events ?? []) as ProjectProofEventRow[],
+        spreadPageMap,
+      })
+    );
 
     setOffers(
       ((offersRes.data ?? []) as OfferRow[]).map((row) => ({
@@ -358,13 +397,28 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   async function handleSaveDraft() {
-    const shortlisted = photos.filter((photo) => photo.selectionStatus === 'shortlisted');
-    const source = shortlisted.length > 0 ? shortlisted : photos;
-    if (source.length === 0) return;
+    const persistedPhotos = photos.filter((photo) => isPersistedUuid(photo.id));
+    const shortlisted = persistedPhotos.filter((photo) => photo.selectionStatus === 'shortlisted');
+    const source = shortlisted.length > 0 ? shortlisted : persistedPhotos;
+    if (source.length === 0) {
+      alert('Wait for photo uploads to finish before saving a draft.');
+      return;
+    }
 
     setIsSavingDraft(true);
+    let createdVersionId: string | null = null;
     try {
-      const nextVersion = (versions[0]?.versionNumber ?? 0) + 1;
+      const { data: latestVersionRow, error: latestVersionError } = await supabase
+        .from('album_versions')
+        .select('version_number')
+        .eq('project_id', projectId)
+        .order('version_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestVersionError) throw latestVersionError;
+
+      const nextVersion = (latestVersionRow?.version_number ?? 0) + 1;
       const layout = spreads.length > 0 ? spreads : generateAutoLayout(source);
 
       const { data: version, error: versionError } = await supabase
@@ -379,6 +433,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         .single();
 
       if (versionError) throw versionError;
+      createdVersionId = version.id;
 
       const { data: insertedSpreads, error: spreadsError } = await supabase
         .from('version_spreads')
@@ -414,7 +469,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
       const { error: proofError } = await supabase.from('proof_links').insert({
         album_version_id: version.id,
-        slug: createProofSlug(),
+        slug: createProofToken(),
         title: `${project?.title ?? 'Project'} proof v${nextVersion}`,
         status: 'active',
       });
@@ -426,6 +481,15 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       await loadWorkspaceData();
     } catch (error: unknown) {
       console.error(error);
+      if (createdVersionId) {
+        const { error: cleanupError } = await supabase
+          .from('album_versions')
+          .delete()
+          .eq('id', createdVersionId);
+        if (cleanupError) {
+          console.error('Failed to clean up draft version after save error', cleanupError);
+        }
+      }
       alert(`Failed to save draft: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSavingDraft(false);
@@ -575,7 +639,42 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     setUserFeedback('Studio branding saved.');
   }
 
-  const statusTone = project ? WORKFLOW_STATUS_META[project.status].label : 'Loading';
+  async function copyProofLink(link: ProjectProofLinkSummary) {
+    try {
+      await navigator.clipboard.writeText(proofUrl(window.location.origin, link.token));
+      setUserFeedback('Proof URL copied.');
+    } catch (error: unknown) {
+      alert(`Failed to copy proof URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async function resendProofLink(link: ProjectProofLinkSummary) {
+    if (!isProofResendable(link.status)) return;
+
+    try {
+      await navigator.clipboard.writeText(proofUrl(window.location.origin, link.token));
+      const { error } = await supabase.from('proof_events').insert({
+        proof_link_id: link.id,
+        album_version_id: link.albumVersionId,
+        project_id: projectId,
+        event_type: 'proof_resent',
+        actor_name: branding.studioName || 'Studio',
+        note: link.title || 'Proof reminder sent',
+      });
+
+      if (error) {
+        alert(`Failed to log proof reminder: ${error.message}`);
+        return;
+      }
+
+      setUserFeedback('Proof URL copied and reminder logged.');
+      await loadWorkspaceData();
+    } catch (error: unknown) {
+      alert(`Failed to send reminder: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  const statusTone = project ? getWorkflowStatusMeta(project.status).label : 'Loading';
 
   return (
     <div className={styles.container}>
@@ -794,75 +893,82 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         <section className={styles.panel}>
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
-              <h2>Proof links</h2>
-              <p>Send white-label proofs, monitor feedback, and steer the project into approval.</p>
+              <h2>Revision summary</h2>
+              <p>Track the latest proof status here, then jump into the dedicated revision hub for full history.</p>
             </div>
             <div className={styles.toolbar}>
-              {proofLinks[0] ? (
-                <button
-                  className={styles.buttonGhost}
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(`${window.location.origin}/proof/${proofLinks[0].slug}`);
-                    setUserFeedback('Latest proof URL copied.');
-                  }}
-                >
+              <Link className={styles.buttonGhost} href={`/projects/${projectId}/revisions`}>
+                Open Revision Hub
+              </Link>
+              {latestProofLink ? (
+                <button className={styles.buttonGhost} onClick={() => copyProofLink(latestProofLink)}>
                   Copy Latest Proof
                 </button>
               ) : null}
             </div>
           </div>
 
-          {proofLinks.length === 0 ? (
+          {latestProofLink === null ? (
             <div className={styles.emptyState}>
-              <h3>No public proof yet</h3>
-              <p>Save a draft version to create the first proof link.</p>
+              <h3>No proof history yet</h3>
+              <p>Save a draft version to publish the first proof, then manage revisions from the hub.</p>
             </div>
           ) : (
-            <div className={styles.proofList}>
-              {proofLinks.map((link) => (
-                <div key={link.id} className={styles.dataCard}>
-                  <div className={styles.cardTitleRow}>
-                    <h3>{link.title || 'Client proof link'}</h3>
-                    <span className={styles.pill}>{link.status}</span>
-                  </div>
-                  <div className={styles.proofUrl}>{`${origin}/proof/${link.slug}`}</div>
-                  <div className={styles.metaRow}>
-                    <span>{proofCommentCounts[link.id] ?? 0} comments</span>
-                    <span>{new Date(link.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  <div className={styles.actionRow}>
-                    <Link className={styles.linkText} href={`/proof/${link.slug}`} target="_blank">
-                      Open proof
-                    </Link>
-                    <button
-                      className={styles.buttonGhost}
-                      onClick={async () => {
-                        await supabase
-                          .from('proof_links')
-                          .update({ status: 'approved', approved_at: new Date().toISOString() })
-                          .eq('id', link.id);
-                        await updateProjectStatus('approved');
-                        await loadWorkspaceData();
-                      }}
-                    >
-                      Mark Approved
-                    </button>
-                    <button
-                      className={styles.buttonGhost}
-                      onClick={async () => {
-                        await supabase
-                          .from('proof_links')
-                          .update({ status: 'changes_requested' })
-                          .eq('id', link.id);
-                        await updateProjectStatus('changes_requested');
-                        await loadWorkspaceData();
-                      }}
-                    >
-                      Mark Changes Requested
-                    </button>
+            <div className={styles.revisionSummary}>
+              <div className={styles.summaryStats}>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Versions</div>
+                  <div className={styles.statValue}>{versions.length}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Proof Links</div>
+                  <div className={styles.statValue}>{proofLinks.length}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Unresolved</div>
+                  <div className={styles.statValue}>{projectProof?.totalCommentStats.unresolved ?? 0}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Resolved</div>
+                  <div className={styles.statValue}>{projectProof?.totalCommentStats.resolved ?? 0}</div>
+                </div>
+              </div>
+
+              <div className={styles.dataCard}>
+                <div className={styles.cardTitleRow}>
+                  <h3>{latestProofLink.title || 'Latest client proof'}</h3>
+                  <div className={styles.badgeRow}>
+                    <span className={styles.pill}>{getProofAccessState(latestProofLink)}</span>
+                    <span className={styles.pill}>{latestProofLink.status}</span>
                   </div>
                 </div>
-              ))}
+                <div className={styles.proofUrl}>{proofUrl(origin, latestProofLink.token)}</div>
+                <div className={styles.metaRow}>
+                  <span>{latestProofLink.commentStats.unresolved} unresolved</span>
+                  <span>{latestProofLink.commentStats.general} general notes</span>
+                  <span>{latestProofLink.commentStats.total} total comments</span>
+                  <span>Sent {new Date(latestProofLink.createdAt).toLocaleString()}</span>
+                  {latestProofLink.approvedAt ? (
+                    <span>Approved {new Date(latestProofLink.approvedAt).toLocaleString()}</span>
+                  ) : null}
+                </div>
+                <div className={styles.actionRow}>
+                  <Link className={styles.linkText} href={`/proof/${latestProofLink.token}`} target="_blank">
+                    Open proof
+                  </Link>
+                  <button className={styles.buttonGhost} onClick={() => copyProofLink(latestProofLink)}>
+                    Copy URL
+                  </button>
+                  {isProofResendable(latestProofLink.status) ? (
+                    <button className={styles.buttonGhost} onClick={() => resendProofLink(latestProofLink)}>
+                      Send Reminder
+                    </button>
+                  ) : null}
+                  <Link className={styles.buttonGhost} href={`/projects/${projectId}/revisions`}>
+                    View Full History
+                  </Link>
+                </div>
+              </div>
             </div>
           )}
         </section>

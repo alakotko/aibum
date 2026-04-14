@@ -1,7 +1,7 @@
-import { WORKFLOW_STATUS_META, type WorkflowStatus } from '@/types/workflow';
+import { getWorkflowStatusMeta } from '@/types/workflow';
 import styles from './StatusBadge.module.css';
 
-export default function StatusBadge({ status }: { status: WorkflowStatus }) {
-  const meta = WORKFLOW_STATUS_META[status];
+export default function StatusBadge({ status }: { status: string | null | undefined }) {
+  const meta = getWorkflowStatusMeta(status);
   return <span className={`${styles.badge} ${styles[meta.tone]}`}>{meta.label}</span>;
 }
