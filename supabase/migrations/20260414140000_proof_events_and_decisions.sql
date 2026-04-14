@@ -3,7 +3,7 @@ create table if not exists public.proof_events (
   proof_link_id uuid references public.proof_links(id) on delete cascade not null,
   album_version_id uuid references public.album_versions(id) on delete cascade not null,
   project_id uuid references public.projects(id) on delete cascade not null,
-  event_type text not null check (event_type in ('proof_sent', 'changes_requested', 'approved')),
+  event_type text not null check (event_type in ('proof_sent', 'proof_resent', 'changes_requested', 'approved')),
   actor_name text not null,
   note text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null

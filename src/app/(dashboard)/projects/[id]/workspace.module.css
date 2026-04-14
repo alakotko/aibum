@@ -394,6 +394,17 @@
   gap: 0.85rem;
 }
 
+.revisionSummary {
+  display: grid;
+  gap: 1rem;
+}
+
+.summaryStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
 .proofUrl {
   font-family: var(--font-geist-mono), monospace;
   font-size: 0.8rem;
@@ -551,6 +562,10 @@
   .twoColumn {
     grid-template-columns: 1fr;
   }
+
+  .summaryStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -568,6 +583,7 @@
   }
 
   .heroStats,
+  .summaryStats,
   .fieldGrid {
     grid-template-columns: 1fr;
   }
