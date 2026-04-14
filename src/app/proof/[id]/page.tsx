@@ -21,6 +21,9 @@ type LoadedProof = {
   spreads: Array<{
     id: string;
     pageNumber: number;
+    templateId: string;
+    spreadRole: 'cover' | 'interior';
+    spreadKey: string;
     layoutType: 'single' | 'split' | 'grid3' | 'auto';
     backgroundColor: string;
     images: Array<{ id: string; url: string; thumbnailUrl?: string | null; filename?: string | null }>;
@@ -127,6 +130,9 @@ export default function ClientProofingPage({ params }: { params: Promise<{ id: s
       spreads: spreadRows.map((spread) => ({
         id: spread.id,
         pageNumber: spread.page_number,
+        templateId: spread.template_id,
+        spreadRole: spread.spread_role,
+        spreadKey: spread.spread_key,
         layoutType: spread.layout_type,
         backgroundColor: spread.background_color,
         images: (spreadImages ?? [])

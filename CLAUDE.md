@@ -41,7 +41,7 @@ src/
 │   ├── useGalleryStore.ts            # Photo state, selection, delete, AI flags
 │   └── useUploadStore.ts             # Upload queue, thumbnail gen, Storage pipeline
 └── utils/
-    ├── autoLayout.ts                 # Spread generator (single / split / grid3)
+    ├── autoLayout.ts                 # Deterministic cover/interior spread generator
     ├── uploadProcessor.ts            # Canvas thumbnail + dataUrl→Blob helpers
     └── supabase/
         ├── client.ts                 # Browser Supabase client
@@ -198,7 +198,7 @@ All tables use RLS. `studio_id = auth.uid()` is the ownership check. `deleted_at
 - [x] Photo upload pipeline (thumbnail gen, optimistic UI, Storage + DB write)
 - [x] Gallery Media Finder (scale slider, multi-select, delete, drag-drop)
 - [x] AI quality flagging endpoint (mocked)
-- [x] Album Builder (auto-layout, background colors, export to DB)
+- [x] Album Builder (deterministic auto-layout, export to DB)
 - [ ] Fix `proof/[id]` to use `useGalleryStore` + Supabase (not `useCullStore`)
 - [ ] Fix `autoLayout.ts` stale import
 - [ ] Wire comment submission to `comments` DB table

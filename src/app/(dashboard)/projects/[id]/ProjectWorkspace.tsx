@@ -386,6 +386,9 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           layout.map((spread, index) => ({
             album_version_id: version.id,
             page_number: index + 1,
+            template_id: spread.templateId,
+            spread_role: spread.spreadRole,
+            spread_key: spread.spreadKey,
             layout_type: spread.layoutType,
             background_color: spread.backgroundColor,
           }))

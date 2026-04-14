@@ -54,6 +54,9 @@ export interface SpreadImageRecord {
 export interface AlbumVersionSpreadRecord {
   id: string;
   pageNumber: number;
+  templateId: string;
+  spreadRole: 'cover' | 'interior';
+  spreadKey: string;
   layoutType: 'single' | 'split' | 'grid3' | 'auto';
   backgroundColor: string;
   images: SpreadImageRecord[];
