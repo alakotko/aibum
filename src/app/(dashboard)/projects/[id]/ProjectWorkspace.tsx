@@ -18,6 +18,7 @@ import {
   formatMoney,
   getWorkflowStatusMeta,
 } from '@/types/workflow';
+import type { ProofCommentRecord } from '@/types/proof';
 import { createProofToken } from '@/utils/proofToken';
 import { generateAutoLayout, type LayoutSpread } from '@/utils/autoLayout';
 import StatusBadge from '@/components/workflow/StatusBadge';
@@ -96,6 +97,28 @@ type InsertedSpreadRow = {
   id: string;
 };
 
+type VersionSpreadRow = {
+  id: string;
+  album_version_id: string;
+  page_number: number;
+};
+
+type ProofCommentRow = {
+  id: string;
+  proof_link_id: string;
+  comment_scope: ProofCommentRecord['commentScope'];
+  version_spread_id: string | null;
+  author_name: string;
+  content: string;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+};
+
+type ProofCommentSummary = ProofCommentRecord & {
+  spreadPageNumber?: number | null;
+};
+
 const TAB_LABELS: Record<ProjectWorkspaceTab, string> = {
   photos: 'Photos',
   drafts: 'Drafts',
@@ -133,6 +156,17 @@ function inferProjectStatusFromOrder(status: OrderSummary['status']): WorkflowSt
   return 'payment_pending';
 }
 
+function getProofCommentStats(comments: ProofCommentSummary[]) {
+  return comments.reduce(
+    (stats, comment) => {
+      if (!comment.resolvedAt) stats.unresolved += 1;
+      if (comment.commentScope === 'general') stats.general += 1;
+      return stats;
+    },
+    { unresolved: 0, general: 0 }
+  );
+}
+
 export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const {
@@ -153,7 +187,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [proofLinks, setProofLinks] = useState<ProofLinkSummary[]>([]);
   const [offers, setOffers] = useState<OfferSummary[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [proofCommentCounts, setProofCommentCounts] = useState<Record<string, number>>({});
+  const [proofCommentsByLink, setProofCommentsByLink] = useState<Record<string, ProofCommentSummary[]>>({});
   const [studioId, setStudioId] = useState<string | null>(null);
   const [branding, setBranding] = useState<BrandingState>({
     studioName: '',
@@ -243,14 +277,16 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
     const versionRows = (versionsRes.data ?? []) as VersionRow[];
     const spreadCountMap: Record<string, number> = {};
+    const spreadPageMap: Record<string, number> = {};
     if (versionIds.length > 0) {
       const { data: spreadRows } = await supabase
         .from('version_spreads')
-        .select('album_version_id')
+        .select('id,album_version_id,page_number')
         .in('album_version_id', versionIds);
 
-      for (const row of spreadRows ?? []) {
+      for (const row of (spreadRows ?? []) as VersionSpreadRow[]) {
         spreadCountMap[row.album_version_id] = (spreadCountMap[row.album_version_id] ?? 0) + 1;
+        spreadPageMap[row.id] = row.page_number;
       }
     }
 
@@ -284,15 +320,35 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     if (proofRows.length > 0) {
       const { data: comments } = await supabase
         .from('proof_comments')
-        .select('proof_link_id')
+        .select('id,proof_link_id,comment_scope,version_spread_id,author_name,content,created_at,resolved_at,resolved_by')
         .in('proof_link_id', proofRows.map((row) => row.id));
-      const counts: Record<string, number> = {};
-      for (const comment of comments ?? []) {
-        counts[comment.proof_link_id] = (counts[comment.proof_link_id] ?? 0) + 1;
+
+      const groupedComments: Record<string, ProofCommentSummary[]> = {};
+      for (const comment of (comments ?? []) as ProofCommentRow[]) {
+        groupedComments[comment.proof_link_id] ??= [];
+        groupedComments[comment.proof_link_id].push({
+          id: comment.id,
+          proofLinkId: comment.proof_link_id,
+          commentScope: comment.comment_scope,
+          versionSpreadId: comment.version_spread_id,
+          authorName: comment.author_name,
+          content: comment.content,
+          createdAt: comment.created_at,
+          resolvedAt: comment.resolved_at,
+          resolvedBy: comment.resolved_by,
+          spreadPageNumber: comment.version_spread_id ? spreadPageMap[comment.version_spread_id] ?? null : null,
+        });
       }
-      setProofCommentCounts(counts);
+
+      for (const proofRow of proofRows) {
+        groupedComments[proofRow.id] = (groupedComments[proofRow.id] ?? []).sort(
+          (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+        );
+      }
+
+      setProofCommentsByLink(groupedComments);
     } else {
-      setProofCommentCounts({});
+      setProofCommentsByLink({});
     }
 
     setOffers(
@@ -636,6 +692,28 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  async function toggleProofCommentResolved(commentId: string, resolved: boolean) {
+    try {
+      const { error } = await supabase
+        .from('proof_comments')
+        .update({
+          resolved_at: resolved ? new Date().toISOString() : null,
+          resolved_by: resolved ? studioId : null,
+        })
+        .eq('id', commentId);
+
+      if (error) {
+        alert(`Failed to update comment status: ${error.message}`);
+        return;
+      }
+
+      setUserFeedback(resolved ? 'Comment resolved.' : 'Comment reopened.');
+      await loadWorkspaceData();
+    } catch (error: unknown) {
+      alert(`Failed to update comment status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   const statusTone = project ? getWorkflowStatusMeta(project.status).label : 'Loading';
 
   return (
@@ -888,12 +966,42 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                   </div>
                   <div className={styles.proofUrl}>{proofUrl(origin, link.token)}</div>
                   <div className={styles.metaRow}>
-                    <span>{proofCommentCounts[link.id] ?? 0} comments</span>
+                    <span>{getProofCommentStats(proofCommentsByLink[link.id] ?? []).unresolved} unresolved</span>
+                    <span>{getProofCommentStats(proofCommentsByLink[link.id] ?? []).general} general notes</span>
                     <span>{new Date(link.createdAt).toLocaleDateString()}</span>
                     <span>
                       {link.expiresAt ? `Expires ${new Date(link.expiresAt).toLocaleString()}` : 'No expiry'}
                     </span>
                   </div>
+                  {(proofCommentsByLink[link.id] ?? []).length > 0 ? (
+                    <div className={styles.commentStream}>
+                      {(proofCommentsByLink[link.id] ?? []).map((comment) => (
+                        <article key={comment.id} className={`${styles.commentItem} ${comment.resolvedAt ? styles.commentItemResolved : ''}`}>
+                          <div className={styles.commentItemHeader}>
+                            <div>
+                              <div className={styles.commentItemAuthor}>{comment.authorName}</div>
+                              <div className={styles.commentItemMeta}>
+                                <span>{comment.commentScope === 'general' ? 'General note' : `Spread ${comment.spreadPageNumber ?? 'Unknown'}`}</span>
+                                <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                              </div>
+                            </div>
+                            <span className={styles.pill}>{comment.resolvedAt ? 'Resolved' : 'Open'}</span>
+                          </div>
+                          <p className={styles.commentItemBody}>{comment.content}</p>
+                          <div className={styles.actionRow}>
+                            <button
+                              className={styles.buttonGhost}
+                              onClick={() => toggleProofCommentResolved(comment.id, !comment.resolvedAt)}
+                            >
+                              {comment.resolvedAt ? 'Reopen Comment' : 'Resolve Comment'}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={styles.metaText}>No client feedback on this proof yet.</p>
+                  )}
                   <div className={styles.expiryControls}>
                     <div className={styles.field}>
                       <label htmlFor={`proof-expires-${link.id}`}>Access expires</label>

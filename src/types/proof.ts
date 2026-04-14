@@ -1,10 +1,13 @@
 export interface ProofCommentRecord {
   id: string;
   proofLinkId: string;
+  commentScope: 'spread' | 'general';
   versionSpreadId?: string | null;
   authorName: string;
   content: string;
   createdAt: string;
+  resolvedAt?: string | null;
+  resolvedBy?: string | null;
 }
 
 export interface ProofSpreadImageRecord {
