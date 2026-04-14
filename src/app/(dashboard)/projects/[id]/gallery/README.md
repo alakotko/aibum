@@ -16,7 +16,7 @@ This is the **core workspace** of the application — a unified page that combin
 - **Drag & Drop / Manual Upload** — Files are added to `useUploadStore` for async processing while optimistic thumbnails appear instantly.
 - **Photo Selection** — Click to toggle, Shift+Click for range selection. Keyboard shortcuts: `Delete`/`Backspace` to delete, `Escape` to deselect.
 - **Thumbnail Scale Slider** — Adjustable grid thumbnail size (80px → 400px), persisted to `localStorage`.
-- **Album Builder Tab** — Auto-generates spread layouts from selected (or all) photos using `generateAutoLayout()`. Supports background color toggling, re-shuffle, and export to Supabase DB.
+- **Album Builder Tab** — Auto-generates deterministic cover/interior layouts from selected (or all) photos using `generateAutoLayout()` and exports template metadata plus stable spread keys to Supabase.
 
 ## Connections
 

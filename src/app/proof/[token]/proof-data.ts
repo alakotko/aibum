@@ -41,7 +41,7 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
     supabase.from('projects').select('title, studio_id').eq('id', version.project_id).maybeSingle(),
     supabase
       .from('version_spreads')
-      .select('id, page_number, layout_type, background_color')
+      .select('id, page_number, template_id, spread_role, spread_key, layout_type, background_color')
       .eq('album_version_id', version.id)
       .order('page_number', { ascending: true }),
     supabase
@@ -107,6 +107,9 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
     spreads: spreadRows.map((spread) => ({
       id: spread.id,
       pageNumber: spread.page_number,
+      templateId: spread.template_id,
+      spreadRole: spread.spread_role,
+      spreadKey: spread.spread_key,
       layoutType: spread.layout_type,
       backgroundColor: spread.background_color,
       images: (spreadImages ?? [])

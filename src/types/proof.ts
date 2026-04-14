@@ -37,6 +37,9 @@ export interface ProofSpreadImageRecord {
 export interface ProofSpreadRecord {
   id: string;
   pageNumber: number;
+  templateId: string;
+  spreadRole: 'cover' | 'interior';
+  spreadKey: string;
   layoutType: 'single' | 'split' | 'grid3' | 'auto';
   backgroundColor: string;
   images: ProofSpreadImageRecord[];

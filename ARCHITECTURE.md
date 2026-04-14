@@ -23,7 +23,7 @@ The application keeps upload and curation interactions client-side where respons
 
 - `useUploadStore` manages optimistic upload queue state and storage writes.
 - `useGalleryStore` now acts as the project input store for `album_inputs`, selection state, and AI flags.
-- Draft spreads are generated client-side with `generateAutoLayout()` and persisted only when the user saves a version.
+- Draft spreads are generated client-side with a deterministic template engine and persisted only when the user saves a version.
 
 ### Supabase
 
@@ -75,7 +75,7 @@ Projects and downstream entities align on:
 
 1. The user generates a spread layout from shortlisted inputs.
 2. Saving a draft creates a new `album_version`.
-3. The app snapshots spreads into `version_spreads` and `version_spread_images`.
+3. The app snapshots spreads into `version_spreads` and `version_spread_images`, including template metadata and deterministic spread keys.
 4. A `proof_link` is created immediately for the saved version.
 5. The project moves into `client_review`.
 
