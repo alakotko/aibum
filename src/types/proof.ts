@@ -10,6 +10,17 @@ export interface ProofCommentRecord {
   resolvedBy?: string | null;
 }
 
+export interface ProofEventRecord {
+  id: string;
+  proofLinkId: string;
+  albumVersionId: string;
+  projectId: string;
+  eventType: 'proof_sent' | 'changes_requested' | 'approved';
+  actorName: string;
+  note?: string | null;
+  createdAt: string;
+}
+
 export interface ProofSpreadImageRecord {
   id: string;
   url: string;
@@ -27,10 +38,14 @@ export interface ProofSpreadRecord {
 
 export interface LoadedProof {
   proofLinkId: string;
+  proofToken: string;
+  albumVersionId: string;
+  projectId: string;
   projectTitle: string;
   versionTitle: string;
   proofTitle: string;
   proofStatus: string;
+  approvedAt?: string | null;
   studioName: string;
   supportEmail: string;
   proofHeadline: string;
@@ -39,4 +54,5 @@ export interface LoadedProof {
   accentColor: string;
   spreads: ProofSpreadRecord[];
   comments: ProofCommentRecord[];
+  events: ProofEventRecord[];
 }

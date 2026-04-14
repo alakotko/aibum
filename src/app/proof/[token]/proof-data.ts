@@ -19,7 +19,7 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
 
   const { data: proofLink } = await supabase
     .from('proof_links')
-    .select('id, album_version_id, title, status, expires_at, is_public')
+    .select('id, slug, album_version_id, title, status, expires_at, approved_at, is_public')
     .eq('slug', token)
     .maybeSingle();
 
@@ -50,6 +50,12 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
       .eq('proof_link_id', proofLink.id)
       .order('created_at', { ascending: true }),
   ]);
+
+  const { data: events } = await supabase
+    .from('proof_events')
+    .select('id, proof_link_id, album_version_id, project_id, event_type, actor_name, note, created_at')
+    .eq('proof_link_id', proofLink.id)
+    .order('created_at', { ascending: false });
 
   const studioId = project?.studio_id ?? null;
   const { data: branding } = studioId
@@ -83,10 +89,14 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
 
   return {
     proofLinkId: proofLink.id,
+    proofToken: proofLink.slug,
+    albumVersionId: version.id,
+    projectId: version.project_id,
     projectTitle: project?.title ?? 'Album proof',
     versionTitle: version.title,
     proofTitle: proofLink.title ?? 'Album proof',
     proofStatus: proofLink.status,
+    approvedAt: proofLink.approved_at ?? null,
     studioName: branding?.studio_name ?? 'Albumin Studio',
     supportEmail: branding?.support_email ?? '',
     proofHeadline: branding?.proof_headline ?? 'Review your album proof',
@@ -121,6 +131,16 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
       createdAt: entry.created_at,
       resolvedAt: entry.resolved_at,
       resolvedBy: entry.resolved_by,
+    })),
+    events: (events ?? []).map((entry) => ({
+      id: entry.id,
+      proofLinkId: entry.proof_link_id,
+      albumVersionId: entry.album_version_id,
+      projectId: entry.project_id,
+      eventType: entry.event_type,
+      actorName: entry.actor_name,
+      note: entry.note,
+      createdAt: entry.created_at,
     })),
   };
 }
