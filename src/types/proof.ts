@@ -15,7 +15,13 @@ export interface ProofEventRecord {
   proofLinkId: string;
   albumVersionId: string;
   projectId: string;
-  eventType: 'proof_sent' | 'changes_requested' | 'approved';
+  eventType:
+    | 'proof_sent'
+    | 'proof_resent'
+    | 'proof_opened'
+    | 'comment_added'
+    | 'changes_requested'
+    | 'approved';
   actorName: string;
   note?: string | null;
   createdAt: string;

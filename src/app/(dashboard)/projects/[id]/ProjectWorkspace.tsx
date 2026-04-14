@@ -6,7 +6,6 @@ import { createClient } from '@/utils/supabase/client';
 import { useGalleryStore } from '@/store/useGalleryStore';
 import { useUploadStore } from '@/store/useUploadStore';
 import type {
-  AlbumVersionSummary,
   OfferSummary,
   OrderSummary,
   ProjectWorkspaceTab,
@@ -18,9 +17,11 @@ import {
   formatMoney,
   getWorkflowStatusMeta,
 } from '@/types/workflow';
-import type { ProofCommentRecord, ProofEventRecord } from '@/types/proof';
+import type { ProjectProofData, ProjectProofLinkSummary } from '@/types/project-proof';
 import { createProofToken } from '@/utils/proofToken';
 import { generateAutoLayout, type LayoutSpread } from '@/utils/autoLayout';
+import { type ProjectProofCommentRow, type ProjectProofEventRow, buildProjectProofData } from '@/utils/projectProof';
+import { isProofResendable } from '@/utils/proofEvents';
 import StatusBadge from '@/components/workflow/StatusBadge';
 import GalleryImage from './gallery/GalleryImage';
 import styles from './workspace.module.css';
@@ -103,33 +104,6 @@ type VersionSpreadRow = {
   page_number: number;
 };
 
-type ProofCommentRow = {
-  id: string;
-  proof_link_id: string;
-  comment_scope: ProofCommentRecord['commentScope'];
-  version_spread_id: string | null;
-  author_name: string;
-  content: string;
-  created_at: string;
-  resolved_at: string | null;
-  resolved_by: string | null;
-};
-
-type ProofCommentSummary = ProofCommentRecord & {
-  spreadPageNumber?: number | null;
-};
-
-type ProofEventRow = {
-  id: string;
-  proof_link_id: string;
-  album_version_id: string;
-  project_id: string;
-  event_type: ProofEventRecord['eventType'];
-  actor_name: string;
-  note: string | null;
-  created_at: string;
-};
-
 const TAB_LABELS: Record<ProjectWorkspaceTab, string> = {
   photos: 'Photos',
   drafts: 'Drafts',
@@ -146,17 +120,6 @@ function proofUrl(origin: string, token: string) {
   return `${origin}/proof/${token}`;
 }
 
-function toDateTimeLocalValue(value: string | null | undefined) {
-  if (!value) return '';
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
-}
-
-function toIsoFromLocalDateTime(value: string) {
-  return value ? new Date(value).toISOString() : null;
-}
-
 function getProofAccessState(link: ProofLinkSummary) {
   if (link.status === 'archived' || !link.isPublic) return 'Archived';
   if (link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now()) return 'Expired';
@@ -169,23 +132,6 @@ function inferProjectStatusFromOrder(status: OrderSummary['status']): WorkflowSt
   if (status === 'shipped') return 'shipped';
   if (status === 'delivered') return 'delivered';
   return 'payment_pending';
-}
-
-function getProofCommentStats(comments: ProofCommentSummary[]) {
-  return comments.reduce(
-    (stats, comment) => {
-      if (!comment.resolvedAt) stats.unresolved += 1;
-      if (comment.commentScope === 'general') stats.general += 1;
-      return stats;
-    },
-    { unresolved: 0, general: 0 }
-  );
-}
-
-function getProofEventLabel(eventType: ProofEventRecord['eventType']) {
-  if (eventType === 'proof_sent') return 'Proof sent';
-  if (eventType === 'changes_requested') return 'Changes requested';
-  return 'Approved';
 }
 
 export default function ProjectWorkspace({ projectId }: { projectId: string }) {
@@ -204,12 +150,9 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [thumbSize, setThumbSize] = useState(220);
   const [spreads, setSpreads] = useState<LayoutSpread[]>([]);
   const [project, setProject] = useState<ProjectRecord | null>(null);
-  const [versions, setVersions] = useState<AlbumVersionSummary[]>([]);
-  const [proofLinks, setProofLinks] = useState<ProofLinkSummary[]>([]);
+  const [projectProof, setProjectProof] = useState<ProjectProofData | null>(null);
   const [offers, setOffers] = useState<OfferSummary[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [proofCommentsByLink, setProofCommentsByLink] = useState<Record<string, ProofCommentSummary[]>>({});
-  const [proofEventsByLink, setProofEventsByLink] = useState<Record<string, ProofEventRecord[]>>({});
   const [studioId, setStudioId] = useState<string | null>(null);
   const [branding, setBranding] = useState<BrandingState>({
     studioName: '',
@@ -224,7 +167,9 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [isSavingBranding, setIsSavingBranding] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [origin, setOrigin] = useState('');
-  const [proofExpiryDrafts, setProofExpiryDrafts] = useState<Record<string, string>>({});
+  const versions = projectProof?.versions ?? [];
+  const proofLinks = versions.flatMap((version) => version.proofLinks);
+  const latestProofLink = projectProof?.latestProofLink ?? null;
 
   useEffect(() => {
     const saved = localStorage.getItem('workflow-thumb-size');
@@ -238,12 +183,6 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
-
-  useEffect(() => {
-    setProofExpiryDrafts(
-      Object.fromEntries(proofLinks.map((link) => [link.id, toDateTimeLocalValue(link.expiresAt)]))
-    );
-  }, [proofLinks]);
 
   const loadWorkspaceData = useCallback(async () => {
     const { data: authData } = await supabase.auth.getSession();
@@ -298,6 +237,15 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
 
     const versionRows = (versionsRes.data ?? []) as VersionRow[];
+    const mappedVersions = versionRows.map((row) => ({
+      id: row.id,
+      versionNumber: row.version_number,
+      title: row.title,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      spreadCount: 0,
+    }));
     const spreadCountMap: Record<string, number> = {};
     const spreadPageMap: Record<string, number> = {};
     if (versionIds.length > 0) {
@@ -312,97 +260,52 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       }
     }
 
-    setVersions(
-      versionRows.map((row) => ({
-        id: row.id,
-        versionNumber: row.version_number,
-        title: row.title,
-        status: row.status,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        spreadCount: spreadCountMap[row.id] ?? 0,
-      }))
-    );
-
     const proofRows = (proofLinksRes.data ?? []) as ProofLinkRow[];
-    setProofLinks(
-      proofRows.map((row) => ({
-        id: row.id,
-        token: row.slug,
-        title: row.title,
-        status: row.status,
-        createdAt: row.created_at,
-        approvedAt: row.approved_at,
-        expiresAt: row.expires_at,
-        isPublic: row.is_public,
-        albumVersionId: row.album_version_id,
-      }))
+    const mappedProofLinks = proofRows.map((row) => ({
+      id: row.id,
+      token: row.slug,
+      title: row.title,
+      status: row.status,
+      createdAt: row.created_at,
+      approvedAt: row.approved_at,
+      expiresAt: row.expires_at,
+      isPublic: row.is_public,
+      albumVersionId: row.album_version_id,
+    }));
+
+    const proofLinkIds = proofRows.map((row) => row.id);
+    const [{ data: comments }, { data: events }] = await Promise.all([
+      proofLinkIds.length > 0
+        ? supabase
+            .from('proof_comments')
+            .select(
+              'id,proof_link_id,comment_scope,version_spread_id,author_name,content,created_at,resolved_at,resolved_by'
+            )
+            .in('proof_link_id', proofLinkIds)
+        : Promise.resolve({ data: [], error: null }),
+      proofLinkIds.length > 0
+        ? supabase
+            .from('proof_events')
+            .select('id,proof_link_id,album_version_id,project_id,event_type,actor_name,note,created_at')
+            .in('proof_link_id', proofLinkIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    setProjectProof(
+      buildProjectProofData({
+        projectId,
+        projectTitle: projectRes.data?.title ?? 'Project',
+        projectStatus: projectRes.data?.status ?? null,
+        versions: mappedVersions.map((version) => ({
+          ...version,
+          spreadCount: spreadCountMap[version.id] ?? 0,
+        })),
+        proofLinks: mappedProofLinks,
+        comments: (comments ?? []) as ProjectProofCommentRow[],
+        events: (events ?? []) as ProjectProofEventRow[],
+        spreadPageMap,
+      })
     );
-
-    if (proofRows.length > 0) {
-      const proofLinkIds = proofRows.map((row) => row.id);
-      const [{ data: comments }, { data: events }] = await Promise.all([
-        supabase
-          .from('proof_comments')
-          .select('id,proof_link_id,comment_scope,version_spread_id,author_name,content,created_at,resolved_at,resolved_by')
-          .in('proof_link_id', proofLinkIds),
-        supabase
-          .from('proof_events')
-          .select('id,proof_link_id,album_version_id,project_id,event_type,actor_name,note,created_at')
-          .in('proof_link_id', proofLinkIds),
-      ]);
-
-      const groupedComments: Record<string, ProofCommentSummary[]> = {};
-      for (const comment of (comments ?? []) as ProofCommentRow[]) {
-        groupedComments[comment.proof_link_id] ??= [];
-        groupedComments[comment.proof_link_id].push({
-          id: comment.id,
-          proofLinkId: comment.proof_link_id,
-          commentScope: comment.comment_scope,
-          versionSpreadId: comment.version_spread_id,
-          authorName: comment.author_name,
-          content: comment.content,
-          createdAt: comment.created_at,
-          resolvedAt: comment.resolved_at,
-          resolvedBy: comment.resolved_by,
-          spreadPageNumber: comment.version_spread_id ? spreadPageMap[comment.version_spread_id] ?? null : null,
-        });
-      }
-
-      for (const proofRow of proofRows) {
-        groupedComments[proofRow.id] = (groupedComments[proofRow.id] ?? []).sort(
-          (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-        );
-      }
-
-      setProofCommentsByLink(groupedComments);
-
-      const groupedEvents: Record<string, ProofEventRecord[]> = {};
-      for (const event of (events ?? []) as ProofEventRow[]) {
-        groupedEvents[event.proof_link_id] ??= [];
-        groupedEvents[event.proof_link_id].push({
-          id: event.id,
-          proofLinkId: event.proof_link_id,
-          albumVersionId: event.album_version_id,
-          projectId: event.project_id,
-          eventType: event.event_type,
-          actorName: event.actor_name,
-          note: event.note,
-          createdAt: event.created_at,
-        });
-      }
-
-      for (const proofRow of proofRows) {
-        groupedEvents[proofRow.id] = (groupedEvents[proofRow.id] ?? []).sort(
-          (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-        );
-      }
-
-      setProofEventsByLink(groupedEvents);
-    } else {
-      setProofCommentsByLink({});
-      setProofEventsByLink({});
-    }
 
     setOffers(
       ((offersRes.data ?? []) as OfferRow[]).map((row) => ({
@@ -733,7 +636,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     setUserFeedback('Studio branding saved.');
   }
 
-  async function copyProofLink(link: ProofLinkSummary) {
+  async function copyProofLink(link: ProjectProofLinkSummary) {
     try {
       await navigator.clipboard.writeText(proofUrl(window.location.origin, link.token));
       setUserFeedback('Proof URL copied.');
@@ -742,53 +645,29 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
-  async function updateProofLink(linkId: string, updates: Partial<ProofLinkRow>, successMessage: string) {
+  async function resendProofLink(link: ProjectProofLinkSummary) {
+    if (!isProofResendable(link.status)) return;
+
     try {
-      const { error } = await supabase.from('proof_links').update(updates).eq('id', linkId);
+      await navigator.clipboard.writeText(proofUrl(window.location.origin, link.token));
+      const { error } = await supabase.from('proof_events').insert({
+        proof_link_id: link.id,
+        album_version_id: link.albumVersionId,
+        project_id: projectId,
+        event_type: 'proof_resent',
+        actor_name: branding.studioName || 'Studio',
+        note: link.title || 'Proof reminder sent',
+      });
+
       if (error) {
-        alert(`Failed to update proof link: ${error.message}`);
+        alert(`Failed to log proof reminder: ${error.message}`);
         return;
       }
 
-      setUserFeedback(successMessage);
+      setUserFeedback('Proof URL copied and reminder logged.');
       await loadWorkspaceData();
     } catch (error: unknown) {
-      alert(`Failed to update proof link: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async function saveProofExpiry(linkId: string) {
-    try {
-      const expiresAt = toIsoFromLocalDateTime(proofExpiryDrafts[linkId] ?? '');
-      await updateProofLink(
-        linkId,
-        { expires_at: expiresAt },
-        expiresAt ? 'Proof expiration updated.' : 'Proof expiration cleared.'
-      );
-    } catch (error: unknown) {
-      alert(`Failed to update proof expiration: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async function toggleProofCommentResolved(commentId: string, resolved: boolean) {
-    try {
-      const { error } = await supabase
-        .from('proof_comments')
-        .update({
-          resolved_at: resolved ? new Date().toISOString() : null,
-          resolved_by: resolved ? studioId : null,
-        })
-        .eq('id', commentId);
-
-      if (error) {
-        alert(`Failed to update comment status: ${error.message}`);
-        return;
-      }
-
-      setUserFeedback(resolved ? 'Comment resolved.' : 'Comment reopened.');
-      await loadWorkspaceData();
-    } catch (error: unknown) {
-      alert(`Failed to update comment status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`Failed to send reminder: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -1011,144 +890,82 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         <section className={styles.panel}>
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
-              <h2>Proof links</h2>
-              <p>Send white-label proofs, monitor feedback, and steer the project into approval.</p>
+              <h2>Revision summary</h2>
+              <p>Track the latest proof status here, then jump into the dedicated revision hub for full history.</p>
             </div>
             <div className={styles.toolbar}>
-              {proofLinks[0] ? (
-                <button
-                  className={styles.buttonGhost}
-                  onClick={() => copyProofLink(proofLinks[0])}
-                >
+              <Link className={styles.buttonGhost} href={`/projects/${projectId}/revisions`}>
+                Open Revision Hub
+              </Link>
+              {latestProofLink ? (
+                <button className={styles.buttonGhost} onClick={() => copyProofLink(latestProofLink)}>
                   Copy Latest Proof
                 </button>
               ) : null}
             </div>
           </div>
 
-          {proofLinks.length === 0 ? (
+          {latestProofLink === null ? (
             <div className={styles.emptyState}>
-              <h3>No public proof yet</h3>
-              <p>Save a draft version to create the first proof link.</p>
+              <h3>No proof history yet</h3>
+              <p>Save a draft version to publish the first proof, then manage revisions from the hub.</p>
             </div>
           ) : (
-            <div className={styles.proofList}>
-              {proofLinks.map((link) => (
-                <div key={link.id} className={styles.dataCard}>
-                  <div className={styles.cardTitleRow}>
-                    <h3>{link.title || 'Client proof link'}</h3>
-                    <div className={styles.badgeRow}>
-                      <span className={styles.pill}>{getProofAccessState(link)}</span>
-                      <span className={styles.pill}>{link.status}</span>
-                    </div>
-                  </div>
-                  <div className={styles.proofUrl}>{proofUrl(origin, link.token)}</div>
-                  <div className={styles.metaRow}>
-                    <span>{getProofCommentStats(proofCommentsByLink[link.id] ?? []).unresolved} unresolved</span>
-                    <span>{getProofCommentStats(proofCommentsByLink[link.id] ?? []).general} general notes</span>
-                    <span>{new Date(link.createdAt).toLocaleDateString()}</span>
-                    {link.approvedAt ? <span>Approved {new Date(link.approvedAt).toLocaleString()}</span> : null}
-                    <span>
-                      {link.expiresAt ? `Expires ${new Date(link.expiresAt).toLocaleString()}` : 'No expiry'}
-                    </span>
-                  </div>
-                  {(proofEventsByLink[link.id] ?? []).length > 0 ? (
-                    <div className={styles.timelineList}>
-                      {(proofEventsByLink[link.id] ?? []).map((event) => (
-                        <article key={event.id} className={styles.timelineItem}>
-                          <div className={styles.timelineHeader}>
-                            <span className={styles.pill}>{getProofEventLabel(event.eventType)}</span>
-                            <span>{new Date(event.createdAt).toLocaleString()}</span>
-                          </div>
-                          <div className={styles.timelineActor}>{event.actorName}</div>
-                          {event.note ? <p className={styles.timelineNote}>{event.note}</p> : null}
-                        </article>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className={styles.metaText}>No proof timeline events yet.</p>
-                  )}
-                  {(proofCommentsByLink[link.id] ?? []).length > 0 ? (
-                    <div className={styles.commentStream}>
-                      {(proofCommentsByLink[link.id] ?? []).map((comment) => (
-                        <article key={comment.id} className={`${styles.commentItem} ${comment.resolvedAt ? styles.commentItemResolved : ''}`}>
-                          <div className={styles.commentItemHeader}>
-                            <div>
-                              <div className={styles.commentItemAuthor}>{comment.authorName}</div>
-                              <div className={styles.commentItemMeta}>
-                                <span>{comment.commentScope === 'general' ? 'General note' : `Spread ${comment.spreadPageNumber ?? 'Unknown'}`}</span>
-                                <span>{new Date(comment.createdAt).toLocaleString()}</span>
-                              </div>
-                            </div>
-                            <span className={styles.pill}>{comment.resolvedAt ? 'Resolved' : 'Open'}</span>
-                          </div>
-                          <p className={styles.commentItemBody}>{comment.content}</p>
-                          <div className={styles.actionRow}>
-                            <button
-                              className={styles.buttonGhost}
-                              onClick={() => toggleProofCommentResolved(comment.id, !comment.resolvedAt)}
-                            >
-                              {comment.resolvedAt ? 'Reopen Comment' : 'Resolve Comment'}
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className={styles.metaText}>No client feedback on this proof yet.</p>
-                  )}
-                  <div className={styles.expiryControls}>
-                    <div className={styles.field}>
-                      <label htmlFor={`proof-expires-${link.id}`}>Access expires</label>
-                      <input
-                        id={`proof-expires-${link.id}`}
-                        type="datetime-local"
-                        value={proofExpiryDrafts[link.id] ?? ''}
-                        onChange={(event) =>
-                          setProofExpiryDrafts((current) => ({ ...current, [link.id]: event.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className={styles.actionRow}>
-                      <button className={styles.buttonGhost} onClick={() => saveProofExpiry(link.id)}>
-                        Save Expiry
-                      </button>
-                      <button
-                        className={styles.buttonGhost}
-                        onClick={() => {
-                          setProofExpiryDrafts((current) => ({ ...current, [link.id]: '' }));
-                          void updateProofLink(link.id, { expires_at: null }, 'Proof expiration cleared.');
-                        }}
-                      >
-                        Clear Expiry
-                      </button>
-                    </div>
-                  </div>
-                  <div className={styles.actionRow}>
-                    <Link className={styles.linkText} href={`/proof/${link.token}`} target="_blank">
-                      Open proof
-                    </Link>
-                    <button className={styles.buttonGhost} onClick={() => copyProofLink(link)}>
-                      Copy URL
-                    </button>
-                    {link.status === 'archived' || !link.isPublic ? (
-                      <button
-                        className={styles.buttonGhost}
-                        onClick={() => updateProofLink(link.id, { status: 'active', is_public: true }, 'Proof link restored.')}
-                      >
-                        Restore Link
-                      </button>
-                    ) : (
-                      <button
-                        className={styles.buttonDanger}
-                        onClick={() => updateProofLink(link.id, { status: 'archived', is_public: false }, 'Proof link archived.')}
-                      >
-                        Archive Link
-                      </button>
-                    )}
+            <div className={styles.revisionSummary}>
+              <div className={styles.summaryStats}>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Versions</div>
+                  <div className={styles.statValue}>{versions.length}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Proof Links</div>
+                  <div className={styles.statValue}>{proofLinks.length}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Unresolved</div>
+                  <div className={styles.statValue}>{projectProof?.totalCommentStats.unresolved ?? 0}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Resolved</div>
+                  <div className={styles.statValue}>{projectProof?.totalCommentStats.resolved ?? 0}</div>
+                </div>
+              </div>
+
+              <div className={styles.dataCard}>
+                <div className={styles.cardTitleRow}>
+                  <h3>{latestProofLink.title || 'Latest client proof'}</h3>
+                  <div className={styles.badgeRow}>
+                    <span className={styles.pill}>{getProofAccessState(latestProofLink)}</span>
+                    <span className={styles.pill}>{latestProofLink.status}</span>
                   </div>
                 </div>
-              ))}
+                <div className={styles.proofUrl}>{proofUrl(origin, latestProofLink.token)}</div>
+                <div className={styles.metaRow}>
+                  <span>{latestProofLink.commentStats.unresolved} unresolved</span>
+                  <span>{latestProofLink.commentStats.general} general notes</span>
+                  <span>{latestProofLink.commentStats.total} total comments</span>
+                  <span>Sent {new Date(latestProofLink.createdAt).toLocaleString()}</span>
+                  {latestProofLink.approvedAt ? (
+                    <span>Approved {new Date(latestProofLink.approvedAt).toLocaleString()}</span>
+                  ) : null}
+                </div>
+                <div className={styles.actionRow}>
+                  <Link className={styles.linkText} href={`/proof/${latestProofLink.token}`} target="_blank">
+                    Open proof
+                  </Link>
+                  <button className={styles.buttonGhost} onClick={() => copyProofLink(latestProofLink)}>
+                    Copy URL
+                  </button>
+                  {isProofResendable(latestProofLink.status) ? (
+                    <button className={styles.buttonGhost} onClick={() => resendProofLink(latestProofLink)}>
+                      Send Reminder
+                    </button>
+                  ) : null}
+                  <Link className={styles.buttonGhost} href={`/projects/${projectId}/revisions`}>
+                    View Full History
+                  </Link>
+                </div>
+              </div>
             </div>
           )}
         </section>

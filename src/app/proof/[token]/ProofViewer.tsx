@@ -1,20 +1,19 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import GalleryImage from '@/app/(dashboard)/projects/[id]/gallery/GalleryImage';
 import type { LoadedProof, ProofCommentRecord, ProofEventRecord } from '@/types/proof';
+import { getProofEventLabel } from '@/utils/proofEvents';
 import styles from './proof.module.css';
 
 function formatProofStatus(status: string) {
   return status.replaceAll('_', ' ');
 }
 
-function getProofEventLabel(eventType: ProofEventRecord['eventType']) {
-  if (eventType === 'proof_sent') return 'Proof sent';
-  if (eventType === 'changes_requested') return 'Changes requested';
-  return 'Approved';
+function getProofOpenSessionKey(token: string) {
+  return `proof-opened:${token}`;
 }
 
 export default function ProofViewer({ initialProof }: { initialProof: LoadedProof }) {
@@ -29,6 +28,7 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
   const [isConfirmingApproval, setIsConfirmingApproval] = useState(false);
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
+  const hasLoggedOpenRef = useRef(false);
 
   const activeSpread = proof.spreads[currentSpread];
   const activeSpreadComments = proof.comments.filter(
@@ -37,6 +37,64 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
   const generalComments = proof.comments.filter((entry) => entry.commentScope === 'general');
   const canSubmitDecision = proof.proofStatus !== 'approved';
   const canUseName = authorName.trim().length > 0;
+
+  useEffect(() => {
+    const sessionKey = getProofOpenSessionKey(initialProof.proofToken);
+
+    if (hasLoggedOpenRef.current) return;
+    if (window.sessionStorage.getItem(sessionKey)) {
+      hasLoggedOpenRef.current = true;
+      return;
+    }
+
+    hasLoggedOpenRef.current = true;
+
+    const supabase = createClient();
+
+    void (async () => {
+      const { data, error } = await supabase
+        .from('proof_events')
+        .insert({
+          proof_link_id: initialProof.proofLinkId,
+          album_version_id: initialProof.albumVersionId,
+          project_id: initialProof.projectId,
+          event_type: 'proof_opened',
+          actor_name: 'Client',
+          note: null,
+        })
+        .select('id, proof_link_id, album_version_id, project_id, event_type, actor_name, note, created_at')
+        .single();
+
+      if (error || !data) {
+        hasLoggedOpenRef.current = false;
+        return;
+      }
+
+      window.sessionStorage.setItem(sessionKey, '1');
+
+      const openedEvent: ProofEventRecord = {
+        id: data.id,
+        proofLinkId: data.proof_link_id,
+        albumVersionId: data.album_version_id,
+        projectId: data.project_id,
+        eventType: data.event_type,
+        actorName: data.actor_name,
+        note: data.note,
+        createdAt: data.created_at,
+      };
+
+      setProof((current) => {
+        if (current.events.some((event) => event.id === openedEvent.id)) {
+          return current;
+        }
+
+        return {
+          ...current,
+          events: [openedEvent, ...current.events],
+        };
+      });
+    })();
+  }, [initialProof.albumVersionId, initialProof.projectId, initialProof.proofLinkId, initialProof.proofToken]);
 
   async function submitComment(scope: ProofCommentRecord['commentScope']) {
     const content = scope === 'spread' ? spreadComment.trim() : generalComment.trim();
@@ -80,10 +138,45 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
         resolvedBy: data.resolved_by,
       };
 
+      const eventNote =
+        scope === 'general' ? 'General feedback' : `Commented on spread ${activeSpread.pageNumber}`;
+      const { data: eventData, error: eventError } = await supabase
+        .from('proof_events')
+        .insert({
+          proof_link_id: proof.proofLinkId,
+          album_version_id: proof.albumVersionId,
+          project_id: proof.projectId,
+          event_type: 'comment_added',
+          actor_name: authorName.trim() || 'Client',
+          note: eventNote,
+        })
+        .select('id, proof_link_id, album_version_id, project_id, event_type, actor_name, note, created_at')
+        .single();
+
+      const createdEvent: ProofEventRecord | null =
+        eventError || !eventData
+          ? null
+          : {
+              id: eventData.id,
+              proofLinkId: eventData.proof_link_id,
+              albumVersionId: eventData.album_version_id,
+              projectId: eventData.project_id,
+              eventType: eventData.event_type,
+              actorName: eventData.actor_name,
+              note: eventData.note,
+              createdAt: eventData.created_at,
+            };
+
       setProof((current) => ({
         ...current,
         comments: [...current.comments, createdComment],
+        events: createdEvent ? [createdEvent, ...current.events] : current.events,
       }));
+
+      if (eventError) {
+        alert(`Comment saved, but failed to update proof activity: ${eventError.message}`);
+      }
+
       if (scope === 'spread') {
         setSpreadComment('');
       } else {
