@@ -404,6 +404,53 @@
   overflow: auto;
 }
 
+.commentStream {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.commentItem {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.commentItemResolved {
+  opacity: 0.72;
+}
+
+.commentItemHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.commentItemAuthor {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #f3d7c8;
+}
+
+.commentItemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.commentItemBody {
+  margin: 0;
+  line-height: 1.6;
+}
+
 .expiryControls {
   display: grid;
   gap: 0.75rem;

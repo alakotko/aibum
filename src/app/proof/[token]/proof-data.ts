@@ -46,7 +46,7 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
       .order('page_number', { ascending: true }),
     supabase
       .from('proof_comments')
-      .select('id, proof_link_id, version_spread_id, author_name, content, created_at')
+      .select('id, proof_link_id, comment_scope, version_spread_id, author_name, content, created_at, resolved_at, resolved_by')
       .eq('proof_link_id', proofLink.id)
       .order('created_at', { ascending: true }),
   ]);
@@ -114,10 +114,13 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
     comments: (comments ?? []).map((entry) => ({
       id: entry.id,
       proofLinkId: entry.proof_link_id,
+      commentScope: entry.comment_scope,
       versionSpreadId: entry.version_spread_id,
       authorName: entry.author_name,
       content: entry.content,
       createdAt: entry.created_at,
+      resolvedAt: entry.resolved_at,
+      resolvedBy: entry.resolved_by,
     })),
   };
 }
