@@ -19,7 +19,6 @@ type ProjectCard = {
 type IntakeMode = 'new' | 'existing';
 
 type IntakeState = {
-  title: string;
   files: File[];
   mode: IntakeMode;
   selectedProjectId: string;
@@ -29,11 +28,15 @@ const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 function createEmptyIntakeState(): IntakeState {
   return {
-    title: '',
     files: [],
     mode: 'new',
     selectedProjectId: '',
   };
+}
+
+function createRandomProjectTitle() {
+  const token = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `Untitled Upload ${token}`;
 }
 
 export default function ProjectsDashboard() {
@@ -46,7 +49,6 @@ export default function ProjectsDashboard() {
   const [intake, setIntake] = useState<IntakeState>(createEmptyIntakeState);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepthRef = useRef(0);
   const router = useRouter();
   const supabase = createClient();
@@ -79,9 +81,6 @@ export default function ProjectsDashboard() {
     setIntakeError(null);
     setIsDragActive(false);
     dragDepthRef.current = 0;
-    if (uploadInputRef.current) {
-      uploadInputRef.current.value = '';
-    }
   }
 
   function closeIntake() {
@@ -98,7 +97,6 @@ export default function ProjectsDashboard() {
     }
 
     setIntake({
-      title: '',
       files: validFiles,
       mode: projects.length > 0 ? 'existing' : 'new',
       selectedProjectId: projects[0]?.id ?? '',
@@ -107,10 +105,6 @@ export default function ProjectsDashboard() {
       validFiles.length !== files.length ? 'Some files were skipped because they are not supported.' : null
     );
     setIsIntakeOpen(true);
-  }
-
-  function handleUploadSelection(files: File[]) {
-    queueFilesForRouting(files);
   }
 
   function handleDragEnter(event: React.DragEvent<HTMLDivElement>) {
@@ -147,11 +141,6 @@ export default function ProjectsDashboard() {
     queueFilesForRouting(Array.from(event.dataTransfer.files ?? []));
   }
 
-  function updateTitle(title: string) {
-    setIntake((current) => ({ ...current, title }));
-    setIntakeError(null);
-  }
-
   function updateMode(mode: IntakeMode) {
     setIntake((current) => ({
       ...current,
@@ -164,6 +153,43 @@ export default function ProjectsDashboard() {
   function updateSelectedProject(selectedProjectId: string) {
     setIntake((current) => ({ ...current, selectedProjectId }));
     setIntakeError(null);
+  }
+
+  async function createProject() {
+    setCreating(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        setCreating(false);
+        return;
+      }
+
+      await supabase.from('profiles').upsert({
+        id: session.user.id,
+        studio_name: 'Demo Studio',
+      });
+
+      const { data: project, error } = await supabase
+        .from('projects')
+        .insert({
+          title: createRandomProjectTitle(),
+          status: 'draft',
+          studio_id: session.user.id,
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+
+      router.push(`/projects/${project.id}`);
+    } catch (error: unknown) {
+      alert(`Failed to create project: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setCreating(false);
+      return;
+    }
   }
 
   async function routeFilesToExistingProject() {
@@ -181,11 +207,6 @@ export default function ProjectsDashboard() {
   }
 
   async function createNewProjectAndUpload() {
-    if (!intake.title.trim()) {
-      setIntakeError('Add a project name before creating it.');
-      return;
-    }
-
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -202,7 +223,7 @@ export default function ProjectsDashboard() {
     const { data: project, error: projectError } = await supabase
       .from('projects')
       .insert({
-        title: intake.title.trim(),
+        title: createRandomProjectTitle(),
         status: 'draft',
         studio_id: session.user.id,
       })
@@ -217,7 +238,7 @@ export default function ProjectsDashboard() {
     setCreating(false);
     setIsIntakeOpen(false);
     resetIntake();
-    router.push(`/projects/${project.id}`);
+    router.push(`/projects/${project.id}?setup=1`);
   }
 
   async function handleRouteFiles() {
@@ -284,17 +305,9 @@ export default function ProjectsDashboard() {
           </p>
         </div>
         <div className={styles.headerActions}>
-          <label className={styles.createBtn}>
-            Upload Photos
-            <input
-              ref={uploadInputRef}
-              type="file"
-              hidden
-              multiple
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(event) => handleUploadSelection(Array.from(event.target.files ?? []))}
-            />
-          </label>
+          <button className={styles.secondaryBtn} onClick={() => void createProject()} disabled={creating}>
+            {creating ? 'Creating...' : 'New Project'}
+          </button>
         </div>
       </header>
 
@@ -369,7 +382,8 @@ export default function ProjectsDashboard() {
                 <h2 className={styles.modalTitle}>Where should these photos go?</h2>
                 <p className={styles.modalBody}>
                   When uploads start outside a project, choose whether to create something new or
-                  attach them to an existing project.
+                  attach them to an existing project. New projects get a temporary name first, then
+                  the setup wizard opens while uploads continue in the background.
                 </p>
               </div>
             </div>
@@ -418,14 +432,10 @@ export default function ProjectsDashboard() {
                   </div>
                 </div>
               ) : (
-                <label className={styles.field}>
-                  <span>Project Name</span>
-                  <input
-                    value={intake.title}
-                    placeholder="Johnson Wedding 2026"
-                    onChange={(event) => updateTitle(event.target.value)}
-                  />
-                </label>
+                <div className={styles.generatedNote}>
+                  A new project will be created with a temporary random name, then you can edit it
+                  from the project setup wizard while the first upload batch is running.
+                </div>
               )}
 
               <div className={styles.fileList}>

@@ -19,7 +19,7 @@ function makePhotos(count: number): TestPhoto[] {
   }));
 }
 
-test('generateAutoLayout returns identical output for identical ordered inputs', () => {
+test('generateAutoLayout returns identical output for identical ordered photos', () => {
   const photos = makePhotos(7);
   assert.deepEqual(generateAutoLayout(photos), generateAutoLayout(photos));
   assert.deepEqual(generateAutoLayout(photos, 'story'), generateAutoLayout(photos, 'story'));
@@ -41,7 +41,7 @@ test('variants produce distinct deterministic interior sequences', () => {
   assert.notDeepEqual(generateAutoLayout(photos, 'story'), generateAutoLayout(photos, 'premium'));
 });
 
-test('spread keys stay stable for identical inputs and change when order changes', () => {
+test('spread keys stay stable for identical photos and change when order changes', () => {
   const photos = makePhotos(4);
   const firstRun = generateAutoLayout(photos).map((spread) => spread.spreadKey);
   const secondRun = generateAutoLayout(photos).map((spread) => spread.spreadKey);

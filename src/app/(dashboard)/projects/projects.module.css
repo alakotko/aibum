@@ -308,6 +308,15 @@
   color: #fff;
 }
 
+.generatedNote {
+  padding: 1rem 1.05rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: #b8b8b8;
+  line-height: 1.6;
+}
+
 .projectList {
   display: grid;
   gap: 0.7rem;
