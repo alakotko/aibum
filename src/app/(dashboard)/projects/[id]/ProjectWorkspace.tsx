@@ -2,6 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { useGalleryStore, type Photo } from '@/store/useGalleryStore';
 import { useUploadStore } from '@/store/useUploadStore';
@@ -64,6 +65,11 @@ type BrandingState = {
   supportEmail: string;
   proofHeadline: string;
   proofSubheadline: string;
+};
+
+type SetupWizardState = {
+  title: string;
+  eventDate: string;
 };
 
 type CatalogItemRow = {
@@ -239,6 +245,9 @@ function getSpreadSignature(spread: LayoutSpread) {
 }
 
 export default function ProjectWorkspace({ projectId }: { projectId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const {
     photos,
@@ -286,6 +295,9 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [isSavingSelectionSet, setIsSavingSelectionSet] = useState(false);
   const [isSavingBranding, setIsSavingBranding] = useState(false);
   const [isSavingStatusMode, setIsSavingStatusMode] = useState(false);
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
+  const [isSavingSetupWizard, setIsSavingSetupWizard] = useState(false);
+  const [setupWizard, setSetupWizard] = useState<SetupWizardState>({ title: '', eventDate: '' });
   const [feedback, setFeedback] = useState<string | null>(null);
   const [origin, setOrigin] = useState('');
   const versions = useMemo(() => projectProof?.versions ?? [], [projectProof]);
@@ -353,6 +365,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     [latestProofLink, orders, versions]
   );
   const projectStatusMode = getProjectStatusMode(project?.status_override);
+  const shouldOpenSetupWizard = searchParams.get('setup') === '1';
 
   useEffect(() => {
     if (!activeSelectionSet) {
@@ -365,6 +378,16 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       .filter((photo): photo is Photo => Boolean(photo));
     setActiveSelectionSetPhotos(orderedPhotos);
   }, [activeSelectionSet, photoMap, selectionSetItemsById]);
+
+  useEffect(() => {
+    if (!project || !shouldOpenSetupWizard) return;
+
+    setSetupWizard({
+      title: project.title,
+      eventDate: project.event_date ?? '',
+    });
+    setIsSetupWizardOpen(true);
+  }, [project, shouldOpenSetupWizard]);
 
   const loadWorkspaceData = useCallback(async () => {
     const { data: authData } = await supabase.auth.getSession();
@@ -786,6 +809,45 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   function setUserFeedback(message: string) {
     setFeedback(message);
     window.setTimeout(() => setFeedback(null), 3000);
+  }
+
+  function closeSetupWizard() {
+    setIsSetupWizardOpen(false);
+    router.replace(pathname);
+  }
+
+  async function saveSetupWizard() {
+    if (!setupWizard.title.trim()) {
+      alert('Project name is required.');
+      return;
+    }
+
+    setIsSavingSetupWizard(true);
+    const { error } = await supabase
+      .from('projects')
+      .update({
+        title: setupWizard.title.trim(),
+        event_date: setupWizard.eventDate || null,
+      })
+      .eq('id', projectId);
+    setIsSavingSetupWizard(false);
+
+    if (error) {
+      alert(`Failed to save project details: ${error.message}`);
+      return;
+    }
+
+    setProject((current) =>
+      current
+        ? {
+            ...current,
+            title: setupWizard.title.trim(),
+            event_date: setupWizard.eventDate || null,
+          }
+        : current
+    );
+    setUserFeedback('Project details saved.');
+    closeSetupWizard();
   }
 
   async function handleFiles(files: File[]) {
@@ -1638,6 +1700,49 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   return (
     <div className={styles.container}>
+      {isSetupWizardOpen ? (
+        <div className={styles.modalOverlay} onClick={() => !isSavingSetupWizard && closeSetupWizard()}>
+          <div className={styles.modalCard} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalEyebrow}>Project Setup</div>
+            <h2 className={styles.modalTitle}>Name this upload while photos sync</h2>
+            <p className={styles.modalCopy}>
+              The first photos are already uploading in the background. Use this time to rename the
+              project and add an event date if you have it.
+            </p>
+            <div className={styles.fieldGrid}>
+              <label className={styles.field}>
+                <span>Project Name</span>
+                <input
+                  value={setupWizard.title}
+                  placeholder="Johnson Wedding 2026"
+                  onChange={(event) =>
+                    setSetupWizard((current) => ({ ...current, title: event.target.value }))
+                  }
+                />
+              </label>
+              <label className={styles.field}>
+                <span>Event Date</span>
+                <input
+                  type="date"
+                  value={setupWizard.eventDate}
+                  onChange={(event) =>
+                    setSetupWizard((current) => ({ ...current, eventDate: event.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <div className={styles.modalActions}>
+              <button className={styles.buttonGhost} onClick={closeSetupWizard} disabled={isSavingSetupWizard}>
+                Later
+              </button>
+              <button className={styles.button} onClick={saveSetupWizard} disabled={isSavingSetupWizard}>
+                {isSavingSetupWizard ? 'Saving...' : 'Save Details'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <section className={styles.hero}>
         <div className={styles.heroMeta}>
           <div className={styles.eyebrow}>Albumin workflow</div>
@@ -1695,7 +1800,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
         <div className={styles.heroStats}>
           <div className={styles.statCard}>
-            <div className={styles.statLabel}>Inputs</div>
+            <div className={styles.statLabel}>Photos</div>
             <div className={styles.statValue}>{photos.length}</div>
           </div>
           <div className={styles.statCard}>
@@ -1730,7 +1835,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
               <h2>Photo intake and curation</h2>
-              <p>Upload source files, shortlist the album set, and exclude non-starters before drafting.</p>
+              <p>Upload photos, shortlist the album set, and exclude non-starters before drafting.</p>
             </div>
             <div className={styles.toolbar}>
               <div className={styles.scaleControl}>
@@ -1745,7 +1850,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                 />
               </div>
               <label className={styles.button}>
-                Upload Inputs
+                Upload Photos
                 <input
                   type="file"
                   hidden
@@ -1883,7 +1988,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
           {photos.length === 0 ? (
             <div className={styles.emptyState}>
-              <h3>No album inputs yet</h3>
+              <h3>No photos yet</h3>
               <p>Upload the project’s source photos to begin the workflow.</p>
             </div>
           ) : (
@@ -1895,12 +2000,12 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                   style={{ minHeight: thumbSize }}
                   onClick={(event) => toggleSelection(photo.id, event.shiftKey)}
                 >
-                  <GalleryImage src={photo.thumbnailUrl ?? photo.url} alt={photo.filename ?? 'Album input'} />
+                  <GalleryImage src={photo.thumbnailUrl ?? photo.url} alt={photo.filename ?? 'Project photo'} />
                   {photo.aiFlags && photo.aiFlags.length > 0 ? (
                     <div className={styles.warn}>{photo.aiFlags[0]}</div>
                   ) : null}
                   <div className={styles.assetMeta}>
-                    <span className={styles.assetName}>{photo.filename ?? 'Input asset'}</span>
+                    <span className={styles.assetName}>{photo.filename ?? 'Photo asset'}</span>
                     <span className={styles.pill}>{photo.selectionStatus}</span>
                   </div>
                 </div>
@@ -1915,7 +2020,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
               <h2>Draft versions</h2>
-              <p>Generate a deterministic draft from shortlisted inputs, make light edits, then persist and publish it.</p>
+              <p>Generate a deterministic draft from shortlisted photos, make light edits, then persist and publish it.</p>
             </div>
             <div className={styles.toolbar}>
               <button className={styles.buttonGhost} disabled={draftSourcePhotos.length === 0} onClick={resetDraft}>
