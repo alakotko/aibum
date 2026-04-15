@@ -16,6 +16,7 @@ import type {
 } from '@/types/workflow';
 import {
   PROJECT_WORKSPACE_TABS,
+  WORKFLOW_STATUSES,
   formatMoney,
   getWorkflowStatusMeta,
 } from '@/types/workflow';
@@ -33,6 +34,11 @@ import type { ProjectProofData, ProjectProofLinkSummary } from '@/types/project-
 import { createProofToken } from '@/utils/proofToken';
 import { type ProjectProofCommentRow, type ProjectProofEventRow, buildProjectProofData } from '@/utils/projectProof';
 import { isProofResendable } from '@/utils/proofEvents';
+import {
+  canApplyAutoProjectStatus,
+  deriveProjectAutoStatus,
+  getProjectStatusMode,
+} from '@/utils/workflowStatus';
 import StatusBadge from '@/components/workflow/StatusBadge';
 import GalleryImage from './gallery/GalleryImage';
 import styles from './workspace.module.css';
@@ -41,6 +47,7 @@ type ProjectRecord = {
   id: string;
   title: string;
   status: WorkflowStatus;
+  status_override?: WorkflowStatus | null;
   event_date?: string | null;
 };
 
@@ -165,14 +172,6 @@ function getProofAccessState(link: ProofLinkSummary) {
   return 'Active';
 }
 
-function inferProjectStatusFromOrder(status: OrderSummary['status']): WorkflowStatus {
-  if (status === 'paid') return 'paid';
-  if (status === 'fulfillment_pending') return 'fulfillment_pending';
-  if (status === 'shipped') return 'shipped';
-  if (status === 'delivered') return 'delivered';
-  return 'payment_pending';
-}
-
 function getSpreadSignature(spread: LayoutSpread) {
   return spread.images.map((image) => image.id).join('|');
 }
@@ -220,9 +219,10 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isSavingSelectionSet, setIsSavingSelectionSet] = useState(false);
   const [isSavingBranding, setIsSavingBranding] = useState(false);
+  const [isSavingStatusMode, setIsSavingStatusMode] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [origin, setOrigin] = useState('');
-  const versions = projectProof?.versions ?? [];
+  const versions = useMemo(() => projectProof?.versions ?? [], [projectProof]);
   const proofLinks = versions.flatMap((version) => version.proofLinks);
   const latestProofLink = projectProof?.latestProofLink ?? null;
 
@@ -259,6 +259,16 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const sourcePoolPhotos = draftSourcePhotos.length > 0 ? draftSourcePhotos : photos;
   const compareLeft = compareLeftId ? compareVersions[compareLeftId] : undefined;
   const compareRight = compareRightId ? compareVersions[compareRightId] : undefined;
+  const autoProjectStatus = useMemo(
+    () =>
+      deriveProjectAutoStatus({
+        latestProofLink,
+        orders,
+        versions,
+      }),
+    [latestProofLink, orders, versions]
+  );
+  const projectStatusMode = getProjectStatusMode(project?.status_override);
 
   useEffect(() => {
     if (!activeSelectionSet) {
@@ -285,7 +295,11 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       ordersRes,
       brandingRes,
     ] = await Promise.all([
-      supabase.from('projects').select('id,title,status,event_date').eq('id', projectId).single(),
+      supabase
+        .from('projects')
+        .select('id,title,status,status_override,event_date')
+        .eq('id', projectId)
+        .single(),
       supabase
         .from('album_versions')
         .select('id,version_number,title,status,variant_key,is_active,selection_set_id,cover_title,created_at,updated_at')
@@ -507,9 +521,57 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     });
   }, [coverTitle, draftSourcePhotos, draftVariant, draftVariantMeta.label, editorSeedVersionId]);
 
-  async function updateProjectStatus(status: WorkflowStatus) {
-    await supabase.from('projects').update({ status }).eq('id', projectId);
-    setProject((current) => (current ? { ...current, status } : current));
+  async function updateProjectAutoStatus(status: WorkflowStatus) {
+    if (!canApplyAutoProjectStatus(project?.status_override)) return;
+
+    const { error } = await supabase
+      .from('projects')
+      .update({ status })
+      .eq('id', projectId)
+      .is('status_override', null);
+    if (error) {
+      alert(`Failed to update project status: ${error.message}`);
+      return;
+    }
+
+    setProject((current) =>
+      current && canApplyAutoProjectStatus(current.status_override) ? { ...current, status } : current
+    );
+  }
+
+  async function setProjectStatusOverride(nextStatusOverride: WorkflowStatus | null) {
+    setIsSavingStatusMode(true);
+
+    const nextStatus = nextStatusOverride ?? autoProjectStatus;
+    const { error } = await supabase
+      .from('projects')
+      .update({
+        status: nextStatus,
+        status_override: nextStatusOverride,
+      })
+      .eq('id', projectId);
+
+    setIsSavingStatusMode(false);
+
+    if (error) {
+      alert(`Failed to update project status: ${error.message}`);
+      return;
+    }
+
+    setProject((current) =>
+      current
+        ? {
+            ...current,
+            status: nextStatus,
+            status_override: nextStatusOverride,
+          }
+        : current
+    );
+    setUserFeedback(
+      nextStatusOverride
+        ? `Manual status override set to ${getWorkflowStatusMeta(nextStatusOverride).label}.`
+        : `Automatic status restored to ${getWorkflowStatusMeta(nextStatus).label}.`
+    );
   }
 
   async function ensureClientId() {
@@ -977,7 +1039,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       });
       if (proofError) throw proofError;
 
-      await updateProjectStatus('client_review');
+      await updateProjectAutoStatus('client_review');
       await loadWorkspaceData();
       setActiveTab('proof');
       setUserFeedback(`${version.title} is now the active proofing draft.`);
@@ -1103,7 +1165,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         });
         if (proofError) throw proofError;
 
-        await updateProjectStatus('client_review');
+        await updateProjectAutoStatus('client_review');
         setActiveTab('proof');
         setUserFeedback(`${versionTitle} saved and proof link published.`);
       } else {
@@ -1220,7 +1282,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         if (orderItemsError) throw orderItemsError;
       }
 
-      await updateProjectStatus('payment_pending');
+      await updateProjectAutoStatus('payment_pending');
       setActiveTab('orders');
       setUserFeedback('Manual order created from offer.');
       await loadWorkspaceData();
@@ -1244,7 +1306,18 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       .from('orders')
       .update(nextValues)
       .eq('id', order.id);
-    await updateProjectStatus(inferProjectStatusFromOrder(nextStatus));
+    const nextProjectStatus = deriveProjectAutoStatus({
+      orders: [
+        {
+          ...order,
+          status: nextStatus,
+        },
+        ...orders.filter((entry) => entry.id !== order.id),
+      ],
+      latestProofLink,
+      versions,
+    });
+    await updateProjectAutoStatus(nextProjectStatus);
     await loadWorkspaceData();
   }
 
@@ -1317,10 +1390,51 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
             <h1>{project?.title ?? 'Loading project...'}</h1>
             {project ? <StatusBadge status={project.status} /> : null}
           </div>
+          <div className={styles.heroContextRow}>
+            <span className={styles.pillMuted}>
+              {projectStatusMode === 'manual' ? 'Manual override' : 'Automatic status'}
+            </span>
+            <span className={styles.pillMuted}>
+              Auto target: {getWorkflowStatusMeta(autoProjectStatus).label}
+            </span>
+            {project?.event_date ? (
+              <span className={styles.pillMuted}>
+                Event date: {new Date(project.event_date).toLocaleDateString()}
+              </span>
+            ) : null}
+          </div>
           <p className={styles.heroSummary}>
             Drive each project from photo intake through proofing, package selection, manual payment,
             and fulfillment without switching into prototype-only gallery flows.
           </p>
+          <div className={styles.statusControl}>
+            <label className={styles.statusField}>
+              <span>Status mode</span>
+              <select
+                value={project?.status_override ?? ''}
+                disabled={!project || isSavingStatusMode}
+                onChange={(event) =>
+                  void setProjectStatusOverride(
+                    event.target.value ? (event.target.value as WorkflowStatus) : null
+                  )
+                }
+              >
+                <option value="">Automatic</option>
+                {WORKFLOW_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {getWorkflowStatusMeta(status).label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className={styles.buttonGhost}
+              disabled={!project?.status_override || isSavingStatusMode}
+              onClick={() => void setProjectStatusOverride(null)}
+            >
+              Clear Override
+            </button>
+          </div>
           {feedback ? <span className={styles.pill}>{feedback}</span> : null}
         </div>
 

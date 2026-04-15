@@ -52,6 +52,41 @@
   line-height: 1.6;
 }
 
+.heroContextRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.statusControl {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.statusField {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.statusField span {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.statusField select {
+  min-width: 13rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--foreground);
+  padding: 0.78rem 1rem;
+  font: inherit;
+}
+
 .heroStats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

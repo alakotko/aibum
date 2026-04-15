@@ -211,10 +211,14 @@ export const useGalleryStore = create<GalleryState>((set, get) => ({
   })),
 
   swapOptimisticPhoto: (localId, updatedPhoto) => set((state) => ({
-    photos: state.photos.map(p => {
-      if (p.id === localId) return updatedPhoto;
-      return p;
-    }),
+    photos: state.photos.some((photo) => photo.id === localId)
+      ? state.photos.map((photo) => {
+          if (photo.id === localId) return updatedPhoto;
+          return photo;
+        })
+      : state.photos.some((photo) => photo.id === updatedPhoto.id)
+        ? state.photos
+        : [...state.photos, updatedPhoto],
     // Update selected ID if the optimistic ID was selected
     selectedPhotoIds: state.selectedPhotoIds.map(id => id === localId ? updatedPhoto.id : id),
     lastClickedId: state.lastClickedId === localId ? updatedPhoto.id : state.lastClickedId
