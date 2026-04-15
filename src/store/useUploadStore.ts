@@ -14,9 +14,13 @@ export interface UploadItem {
   errorDetails?: string;
 }
 
+type AddFilesOptions = {
+  optimistic?: boolean;
+};
+
 interface UploadState {
   queue: UploadItem[];
-  addFiles: (files: File[]) => Promise<void>;
+  addFiles: (files: File[], options?: AddFilesOptions) => Promise<void>;
   processQueue: (projectId: string) => Promise<void>;
   removeUpload: (id: string) => void;
   _isUploading: boolean;
@@ -26,7 +30,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   queue: [],
   _isUploading: false,
 
-  addFiles: async (files) => {
+  addFiles: async (files, options) => {
     // 1. Filter files (JPEG/PNG only)
     const validFiles = files.filter(f =>
       f.type === 'image/jpeg' || f.type === 'image/png' || f.type === 'image/webp'
@@ -66,6 +70,8 @@ export const useUploadStore = create<UploadState>((set, get) => ({
 
     // 3. Add to upload queue
     set(state => ({ queue: [...state.queue, ...newItems] }));
+
+    if (options?.optimistic === false) return;
 
     // 4. Also push optimally to CullStore so user can work NOW
     const optimisticPhotos = newItems.map(item => ({

@@ -2,6 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { useGalleryStore, type Photo } from '@/store/useGalleryStore';
 import { useUploadStore } from '@/store/useUploadStore';
@@ -16,6 +17,7 @@ import type {
 } from '@/types/workflow';
 import {
   PROJECT_WORKSPACE_TABS,
+  WORKFLOW_STATUSES,
   formatMoney,
   getWorkflowStatusMeta,
 } from '@/types/workflow';
@@ -33,6 +35,11 @@ import type { ProjectProofData, ProjectProofLinkSummary } from '@/types/project-
 import { createProofToken } from '@/utils/proofToken';
 import { type ProjectProofCommentRow, type ProjectProofEventRow, buildProjectProofData } from '@/utils/projectProof';
 import { isProofResendable } from '@/utils/proofEvents';
+import {
+  canApplyAutoProjectStatus,
+  deriveProjectAutoStatus,
+  getProjectStatusMode,
+} from '@/utils/workflowStatus';
 import StatusBadge from '@/components/workflow/StatusBadge';
 import GalleryImage from './gallery/GalleryImage';
 import styles from './workspace.module.css';
@@ -41,6 +48,7 @@ type ProjectRecord = {
   id: string;
   title: string;
   status: WorkflowStatus;
+  status_override?: WorkflowStatus | null;
   event_date?: string | null;
 };
 
@@ -52,6 +60,11 @@ type BrandingState = {
   supportEmail: string;
   proofHeadline: string;
   proofSubheadline: string;
+};
+
+type SetupWizardState = {
+  title: string;
+  eventDate: string;
 };
 
 type VersionRow = {
@@ -165,19 +178,14 @@ function getProofAccessState(link: ProofLinkSummary) {
   return 'Active';
 }
 
-function inferProjectStatusFromOrder(status: OrderSummary['status']): WorkflowStatus {
-  if (status === 'paid') return 'paid';
-  if (status === 'fulfillment_pending') return 'fulfillment_pending';
-  if (status === 'shipped') return 'shipped';
-  if (status === 'delivered') return 'delivered';
-  return 'payment_pending';
-}
-
 function getSpreadSignature(spread: LayoutSpread) {
   return spread.images.map((image) => image.id).join('|');
 }
 
 export default function ProjectWorkspace({ projectId }: { projectId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const {
     photos,
@@ -220,9 +228,13 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isSavingSelectionSet, setIsSavingSelectionSet] = useState(false);
   const [isSavingBranding, setIsSavingBranding] = useState(false);
+  const [isSavingStatusMode, setIsSavingStatusMode] = useState(false);
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
+  const [isSavingSetupWizard, setIsSavingSetupWizard] = useState(false);
+  const [setupWizard, setSetupWizard] = useState<SetupWizardState>({ title: '', eventDate: '' });
   const [feedback, setFeedback] = useState<string | null>(null);
   const [origin, setOrigin] = useState('');
-  const versions = projectProof?.versions ?? [];
+  const versions = useMemo(() => projectProof?.versions ?? [], [projectProof]);
   const proofLinks = versions.flatMap((version) => version.proofLinks);
   const latestProofLink = projectProof?.latestProofLink ?? null;
 
@@ -259,6 +271,17 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const sourcePoolPhotos = draftSourcePhotos.length > 0 ? draftSourcePhotos : photos;
   const compareLeft = compareLeftId ? compareVersions[compareLeftId] : undefined;
   const compareRight = compareRightId ? compareVersions[compareRightId] : undefined;
+  const autoProjectStatus = useMemo(
+    () =>
+      deriveProjectAutoStatus({
+        latestProofLink,
+        orders,
+        versions,
+      }),
+    [latestProofLink, orders, versions]
+  );
+  const projectStatusMode = getProjectStatusMode(project?.status_override);
+  const shouldOpenSetupWizard = searchParams.get('setup') === '1';
 
   useEffect(() => {
     if (!activeSelectionSet) {
@@ -271,6 +294,16 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       .filter((photo): photo is Photo => Boolean(photo));
     setActiveSelectionSetPhotos(orderedPhotos);
   }, [activeSelectionSet, photoMap, selectionSetItemsById]);
+
+  useEffect(() => {
+    if (!project || !shouldOpenSetupWizard) return;
+
+    setSetupWizard({
+      title: project.title,
+      eventDate: project.event_date ?? '',
+    });
+    setIsSetupWizardOpen(true);
+  }, [project, shouldOpenSetupWizard]);
 
   const loadWorkspaceData = useCallback(async () => {
     const { data: authData } = await supabase.auth.getSession();
@@ -285,7 +318,11 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       ordersRes,
       brandingRes,
     ] = await Promise.all([
-      supabase.from('projects').select('id,title,status,event_date').eq('id', projectId).single(),
+      supabase
+        .from('projects')
+        .select('id,title,status,status_override,event_date')
+        .eq('id', projectId)
+        .single(),
       supabase
         .from('album_versions')
         .select('id,version_number,title,status,variant_key,is_active,selection_set_id,cover_title,created_at,updated_at')
@@ -507,9 +544,57 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     });
   }, [coverTitle, draftSourcePhotos, draftVariant, draftVariantMeta.label, editorSeedVersionId]);
 
-  async function updateProjectStatus(status: WorkflowStatus) {
-    await supabase.from('projects').update({ status }).eq('id', projectId);
-    setProject((current) => (current ? { ...current, status } : current));
+  async function updateProjectAutoStatus(status: WorkflowStatus) {
+    if (!canApplyAutoProjectStatus(project?.status_override)) return;
+
+    const { error } = await supabase
+      .from('projects')
+      .update({ status })
+      .eq('id', projectId)
+      .is('status_override', null);
+    if (error) {
+      alert(`Failed to update project status: ${error.message}`);
+      return;
+    }
+
+    setProject((current) =>
+      current && canApplyAutoProjectStatus(current.status_override) ? { ...current, status } : current
+    );
+  }
+
+  async function setProjectStatusOverride(nextStatusOverride: WorkflowStatus | null) {
+    setIsSavingStatusMode(true);
+
+    const nextStatus = nextStatusOverride ?? autoProjectStatus;
+    const { error } = await supabase
+      .from('projects')
+      .update({
+        status: nextStatus,
+        status_override: nextStatusOverride,
+      })
+      .eq('id', projectId);
+
+    setIsSavingStatusMode(false);
+
+    if (error) {
+      alert(`Failed to update project status: ${error.message}`);
+      return;
+    }
+
+    setProject((current) =>
+      current
+        ? {
+            ...current,
+            status: nextStatus,
+            status_override: nextStatusOverride,
+          }
+        : current
+    );
+    setUserFeedback(
+      nextStatusOverride
+        ? `Manual status override set to ${getWorkflowStatusMeta(nextStatusOverride).label}.`
+        : `Automatic status restored to ${getWorkflowStatusMeta(nextStatus).label}.`
+    );
   }
 
   async function ensureClientId() {
@@ -539,6 +624,45 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   function setUserFeedback(message: string) {
     setFeedback(message);
     window.setTimeout(() => setFeedback(null), 3000);
+  }
+
+  function closeSetupWizard() {
+    setIsSetupWizardOpen(false);
+    router.replace(pathname);
+  }
+
+  async function saveSetupWizard() {
+    if (!setupWizard.title.trim()) {
+      alert('Project name is required.');
+      return;
+    }
+
+    setIsSavingSetupWizard(true);
+    const { error } = await supabase
+      .from('projects')
+      .update({
+        title: setupWizard.title.trim(),
+        event_date: setupWizard.eventDate || null,
+      })
+      .eq('id', projectId);
+    setIsSavingSetupWizard(false);
+
+    if (error) {
+      alert(`Failed to save project details: ${error.message}`);
+      return;
+    }
+
+    setProject((current) =>
+      current
+        ? {
+            ...current,
+            title: setupWizard.title.trim(),
+            event_date: setupWizard.eventDate || null,
+          }
+        : current
+    );
+    setUserFeedback('Project details saved.');
+    closeSetupWizard();
   }
 
   async function handleFiles(files: File[]) {
@@ -977,7 +1101,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       });
       if (proofError) throw proofError;
 
-      await updateProjectStatus('client_review');
+      await updateProjectAutoStatus('client_review');
       await loadWorkspaceData();
       setActiveTab('proof');
       setUserFeedback(`${version.title} is now the active proofing draft.`);
@@ -1103,7 +1227,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         });
         if (proofError) throw proofError;
 
-        await updateProjectStatus('client_review');
+        await updateProjectAutoStatus('client_review');
         setActiveTab('proof');
         setUserFeedback(`${versionTitle} saved and proof link published.`);
       } else {
@@ -1220,7 +1344,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         if (orderItemsError) throw orderItemsError;
       }
 
-      await updateProjectStatus('payment_pending');
+      await updateProjectAutoStatus('payment_pending');
       setActiveTab('orders');
       setUserFeedback('Manual order created from offer.');
       await loadWorkspaceData();
@@ -1244,7 +1368,18 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       .from('orders')
       .update(nextValues)
       .eq('id', order.id);
-    await updateProjectStatus(inferProjectStatusFromOrder(nextStatus));
+    const nextProjectStatus = deriveProjectAutoStatus({
+      orders: [
+        {
+          ...order,
+          status: nextStatus,
+        },
+        ...orders.filter((entry) => entry.id !== order.id),
+      ],
+      latestProofLink,
+      versions,
+    });
+    await updateProjectAutoStatus(nextProjectStatus);
     await loadWorkspaceData();
   }
 
@@ -1310,6 +1445,49 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   return (
     <div className={styles.container}>
+      {isSetupWizardOpen ? (
+        <div className={styles.modalOverlay} onClick={() => !isSavingSetupWizard && closeSetupWizard()}>
+          <div className={styles.modalCard} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalEyebrow}>Project Setup</div>
+            <h2 className={styles.modalTitle}>Name this upload while photos sync</h2>
+            <p className={styles.modalCopy}>
+              The first photos are already uploading in the background. Use this time to rename the
+              project and add an event date if you have it.
+            </p>
+            <div className={styles.fieldGrid}>
+              <label className={styles.field}>
+                <span>Project Name</span>
+                <input
+                  value={setupWizard.title}
+                  placeholder="Johnson Wedding 2026"
+                  onChange={(event) =>
+                    setSetupWizard((current) => ({ ...current, title: event.target.value }))
+                  }
+                />
+              </label>
+              <label className={styles.field}>
+                <span>Event Date</span>
+                <input
+                  type="date"
+                  value={setupWizard.eventDate}
+                  onChange={(event) =>
+                    setSetupWizard((current) => ({ ...current, eventDate: event.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <div className={styles.modalActions}>
+              <button className={styles.buttonGhost} onClick={closeSetupWizard} disabled={isSavingSetupWizard}>
+                Later
+              </button>
+              <button className={styles.button} onClick={saveSetupWizard} disabled={isSavingSetupWizard}>
+                {isSavingSetupWizard ? 'Saving...' : 'Save Details'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <section className={styles.hero}>
         <div className={styles.heroMeta}>
           <div className={styles.eyebrow}>Albumin workflow</div>
@@ -1317,16 +1495,57 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
             <h1>{project?.title ?? 'Loading project...'}</h1>
             {project ? <StatusBadge status={project.status} /> : null}
           </div>
+          <div className={styles.heroContextRow}>
+            <span className={styles.pillMuted}>
+              {projectStatusMode === 'manual' ? 'Manual override' : 'Automatic status'}
+            </span>
+            <span className={styles.pillMuted}>
+              Auto target: {getWorkflowStatusMeta(autoProjectStatus).label}
+            </span>
+            {project?.event_date ? (
+              <span className={styles.pillMuted}>
+                Event date: {new Date(project.event_date).toLocaleDateString()}
+              </span>
+            ) : null}
+          </div>
           <p className={styles.heroSummary}>
             Drive each project from photo intake through proofing, package selection, manual payment,
             and fulfillment without switching into prototype-only gallery flows.
           </p>
+          <div className={styles.statusControl}>
+            <label className={styles.statusField}>
+              <span>Status mode</span>
+              <select
+                value={project?.status_override ?? ''}
+                disabled={!project || isSavingStatusMode}
+                onChange={(event) =>
+                  void setProjectStatusOverride(
+                    event.target.value ? (event.target.value as WorkflowStatus) : null
+                  )
+                }
+              >
+                <option value="">Automatic</option>
+                {WORKFLOW_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {getWorkflowStatusMeta(status).label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className={styles.buttonGhost}
+              disabled={!project?.status_override || isSavingStatusMode}
+              onClick={() => void setProjectStatusOverride(null)}
+            >
+              Clear Override
+            </button>
+          </div>
           {feedback ? <span className={styles.pill}>{feedback}</span> : null}
         </div>
 
         <div className={styles.heroStats}>
           <div className={styles.statCard}>
-            <div className={styles.statLabel}>Inputs</div>
+            <div className={styles.statLabel}>Photos</div>
             <div className={styles.statValue}>{photos.length}</div>
           </div>
           <div className={styles.statCard}>
@@ -1361,7 +1580,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
               <h2>Photo intake and curation</h2>
-              <p>Upload source files, shortlist the album set, and exclude non-starters before drafting.</p>
+              <p>Upload photos, shortlist the album set, and exclude non-starters before drafting.</p>
             </div>
             <div className={styles.toolbar}>
               <div className={styles.scaleControl}>
@@ -1376,7 +1595,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                 />
               </div>
               <label className={styles.button}>
-                Upload Inputs
+                Upload Photos
                 <input
                   type="file"
                   hidden
@@ -1514,7 +1733,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
           {photos.length === 0 ? (
             <div className={styles.emptyState}>
-              <h3>No album inputs yet</h3>
+              <h3>No photos yet</h3>
               <p>Upload the project’s source photos to begin the workflow.</p>
             </div>
           ) : (
@@ -1526,12 +1745,12 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                   style={{ minHeight: thumbSize }}
                   onClick={(event) => toggleSelection(photo.id, event.shiftKey)}
                 >
-                  <GalleryImage src={photo.thumbnailUrl ?? photo.url} alt={photo.filename ?? 'Album input'} />
+                  <GalleryImage src={photo.thumbnailUrl ?? photo.url} alt={photo.filename ?? 'Project photo'} />
                   {photo.aiFlags && photo.aiFlags.length > 0 ? (
                     <div className={styles.warn}>{photo.aiFlags[0]}</div>
                   ) : null}
                   <div className={styles.assetMeta}>
-                    <span className={styles.assetName}>{photo.filename ?? 'Input asset'}</span>
+                    <span className={styles.assetName}>{photo.filename ?? 'Photo asset'}</span>
                     <span className={styles.pill}>{photo.selectionStatus}</span>
                   </div>
                 </div>
@@ -1546,7 +1765,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
               <h2>Draft versions</h2>
-              <p>Generate a deterministic draft from shortlisted inputs, make light edits, then persist and publish it.</p>
+              <p>Generate a deterministic draft from shortlisted photos, make light edits, then persist and publish it.</p>
             </div>
             <div className={styles.toolbar}>
               <button className={styles.buttonGhost} disabled={draftSourcePhotos.length === 0} onClick={resetDraft}>

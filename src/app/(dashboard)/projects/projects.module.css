@@ -11,6 +11,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 3rem;
+  gap: 1.5rem;
 }
 
 .title {
@@ -21,6 +22,19 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+.subtitle {
+  margin: 0.75rem 0 0;
+  max-width: 38rem;
+  color: #949494;
+  line-height: 1.6;
+}
+
+.headerActions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
 }
 
 .createBtn {
@@ -75,7 +89,7 @@
 .cardMeta {
   font-size: 0.9rem;
   color: #888;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.6rem;
 }
 
 .status {
@@ -165,6 +179,17 @@
   animation: slideUp 0.2s ease;
 }
 
+.modalWide {
+  background: rgba(18, 18, 22, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 2rem;
+  max-width: 720px;
+  width: min(92vw, 720px);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  animation: slideUp 0.2s ease;
+}
+
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -204,6 +229,207 @@
   display: flex;
   gap: 1rem;
   justify-content: center;
+}
+
+.wizardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.wizardEyebrow {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #caa895;
+  margin-bottom: 0.6rem;
+}
+
+.stepper {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.field {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.field span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #a8a8a8;
+}
+
+.field input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  padding: 0.85rem 0.95rem;
+  font: inherit;
+}
+
+.wizardSingle {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.modeSwitch {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.modeButton,
+.modeButtonActive {
+  flex: 1;
+  border-radius: 999px;
+  padding: 0.78rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modeButton {
+  background: rgba(255, 255, 255, 0.04);
+  color: #d7d7d7;
+}
+
+.modeButtonActive {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.generatedNote {
+  padding: 1rem 1.05rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: #b8b8b8;
+  line-height: 1.6;
+}
+
+.projectList {
+  display: grid;
+  gap: 0.7rem;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.projectListItem,
+.projectListItemActive {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.projectListItem {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: #f1f1f1;
+}
+
+.projectListItemActive {
+  border: 1px solid rgba(224, 154, 121, 0.4);
+  background: rgba(204, 120, 92, 0.12);
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(224, 154, 121, 0.2);
+}
+
+.projectListText {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.projectListText strong {
+  font-size: 0.98rem;
+}
+
+.projectListText span {
+  font-size: 0.82rem;
+  color: #a8a8a8;
+}
+
+.fileList {
+  display: grid;
+  gap: 0.7rem;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.fileEmpty,
+.fileRow {
+  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.fileRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.fileName {
+  color: #f1f1f1;
+  word-break: break-word;
+}
+
+.fileMeta,
+.fileEmpty {
+  color: #9b9b9b;
+}
+
+.errorText {
+  margin: 0 0 1rem;
+  color: #ff9494;
+}
+
+.dropOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(10, 10, 14, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.dropCard {
+  padding: 2rem 2.25rem;
+  border-radius: 24px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  background: rgba(18, 18, 22, 0.92);
+  text-align: center;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.dropCard h2 {
+  margin: 0 0 0.6rem;
+}
+
+.dropCard p {
+  margin: 0;
+  color: #b0b0b0;
 }
 
 .cancelBtn {
@@ -250,4 +476,12 @@
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+@media (max-width: 840px) {
+  .header,
+  .wizardHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
