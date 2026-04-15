@@ -1,7 +1,9 @@
 import 'server-only';
 
+import { loadPublicCheckoutContext } from './checkout-data';
 import { createClient } from '@/utils/supabase/server';
 import type { LoadedProof } from '@/types/proof';
+import { resolveStudioBranding } from '@/utils/commerce';
 
 const PUBLIC_PROOF_STATUSES = ['active', 'changes_requested', 'approved'] as const;
 
@@ -61,10 +63,25 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
   const { data: branding } = studioId
     ? await supabase
         .from('studio_branding')
-        .select('studio_name, support_email, proof_headline, proof_subheadline, primary_color, accent_color')
+        .select('studio_name, sender_name, support_email, proof_headline, proof_subheadline, primary_color, accent_color, logo_url')
         .eq('studio_id', studioId)
         .maybeSingle()
     : { data: null };
+
+  const resolvedBranding = resolveStudioBranding(
+    branding
+      ? {
+          studioName: branding.studio_name,
+          senderName: branding.sender_name,
+          supportEmail: branding.support_email,
+          proofHeadline: branding.proof_headline,
+          proofSubheadline: branding.proof_subheadline,
+          primaryColor: branding.primary_color,
+          accentColor: branding.accent_color,
+          logoUrl: branding.logo_url,
+        }
+      : null
+  );
 
   const spreadRows = spreads ?? [];
   const spreadIds = spreadRows.map((spread) => spread.id);
@@ -86,6 +103,8 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
     : { data: [] };
 
   const inputMap = new Map((albumInputs ?? []).map((input) => [input.id, input]));
+  const checkoutContext =
+    proofLink.status === 'approved' ? await loadPublicCheckoutContext(token) : null;
 
   return {
     proofLinkId: proofLink.id,
@@ -97,13 +116,16 @@ export async function loadProofByToken(token: string): Promise<LoadedProof | nul
     proofTitle: proofLink.title ?? 'Album proof',
     proofStatus: proofLink.status,
     approvedAt: proofLink.approved_at ?? null,
-    studioName: branding?.studio_name ?? 'Albumin Studio',
-    supportEmail: branding?.support_email ?? '',
-    proofHeadline: branding?.proof_headline ?? 'Review your album proof',
-    proofSubheadline:
-      branding?.proof_subheadline ?? 'Leave comments directly on the spreads that need changes.',
-    primaryColor: branding?.primary_color ?? '#cc785c',
-    accentColor: branding?.accent_color ?? '#f3e6d4',
+    studioName: resolvedBranding.studioName,
+    senderName: resolvedBranding.senderName,
+    supportEmail: resolvedBranding.supportEmail,
+    proofHeadline: resolvedBranding.proofHeadline,
+    proofSubheadline: resolvedBranding.proofSubheadline,
+    primaryColor: resolvedBranding.primaryColor,
+    accentColor: resolvedBranding.accentColor,
+    checkoutUrl: checkoutContext ? `/proof/${token}/checkout` : null,
+    checkoutEnabled:
+      Boolean(checkoutContext?.existingOrder) || Boolean(checkoutContext && checkoutContext.offers.length > 0),
     spreads: spreadRows.map((spread) => ({
       id: spread.id,
       pageNumber: spread.page_number,

@@ -8,11 +8,13 @@ import { useGalleryStore, type Photo } from '@/store/useGalleryStore';
 import { useUploadStore } from '@/store/useUploadStore';
 import type {
   AlbumVersionSummary,
+  OfferItemSummary,
   OfferSummary,
   OrderSummary,
   ProjectWorkspaceTab,
   ProofLinkSummary,
   SelectionSetSummary,
+  StudioCatalogItemSummary,
   WorkflowStatus,
 } from '@/types/workflow';
 import {
@@ -34,11 +36,13 @@ import {
 import type { ProjectProofData, ProjectProofLinkSummary } from '@/types/project-proof';
 import { createProofToken } from '@/utils/proofToken';
 import { type ProjectProofCommentRow, type ProjectProofEventRow, buildProjectProofData } from '@/utils/projectProof';
+import { calculateOfferSelectionTotal, formatOrderDestination } from '@/utils/commerce';
 import { isProofResendable } from '@/utils/proofEvents';
 import {
   canApplyAutoProjectStatus,
   deriveProjectAutoStatus,
   getProjectStatusMode,
+  inferProjectStatusFromOrder,
 } from '@/utils/workflowStatus';
 import StatusBadge from '@/components/workflow/StatusBadge';
 import GalleryImage from './gallery/GalleryImage';
@@ -54,6 +58,7 @@ type ProjectRecord = {
 
 type BrandingState = {
   studioName: string;
+  senderName: string;
   logoUrl: string;
   primaryColor: string;
   accentColor: string;
@@ -65,6 +70,21 @@ type BrandingState = {
 type SetupWizardState = {
   title: string;
   eventDate: string;
+};
+
+type CatalogItemRow = {
+  id: string;
+  studio_id: string;
+  kind: StudioCatalogItemSummary['kind'];
+  title: string;
+  description: string | null;
+  currency: string;
+  price_cents: number;
+  internal_cost_cents: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 };
 
 type VersionRow = {
@@ -120,6 +140,23 @@ type OfferRow = {
   total_cents: number;
   currency: string;
   updated_at: string;
+  notes: string | null;
+  package_catalog_item_id: string | null;
+};
+
+type OfferItemRow = {
+  id: string;
+  offer_id: string;
+  title: string;
+  description: string | null;
+  quantity: number;
+  unit_price_cents: number;
+  line_total_cents: number;
+  item_kind: OfferItemSummary['itemKind'];
+  is_optional: boolean;
+  is_selected_by_default: boolean;
+  internal_cost_cents: number;
+  studio_catalog_item_id: string | null;
 };
 
 type OrderRow = {
@@ -131,10 +168,35 @@ type OrderRow = {
   currency: string;
   updated_at: string;
   operator_notes: string | null;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  buyer_phone: string | null;
+  client_note: string | null;
+  shipping_name: string | null;
+  shipping_address_line_1: string | null;
+  shipping_address_line_2: string | null;
+  shipping_city: string | null;
+  shipping_state: string | null;
+  shipping_postal_code: string | null;
+  shipping_country: string | null;
+};
+
+type OrderItemRow = {
+  id: string;
+  order_id: string;
+  title: string;
+  description: string | null;
+  quantity: number;
+  unit_price_cents: number;
+  line_total_cents: number;
+  item_kind: OfferItemSummary['itemKind'];
+  internal_cost_cents: number;
+  studio_catalog_item_id: string | null;
 };
 
 type BrandingRow = {
   studio_name: string | null;
+  sender_name: string | null;
   logo_url: string | null;
   primary_color: string;
   accent_color: string;
@@ -213,11 +275,13 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [editorSeedVersionId, setEditorSeedVersionId] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectRecord | null>(null);
   const [projectProof, setProjectProof] = useState<ProjectProofData | null>(null);
+  const [catalogItems, setCatalogItems] = useState<StudioCatalogItemSummary[]>([]);
   const [offers, setOffers] = useState<OfferSummary[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [studioId, setStudioId] = useState<string | null>(null);
   const [branding, setBranding] = useState<BrandingState>({
     studioName: '',
+    senderName: '',
     logoUrl: '',
     primaryColor: '#cc785c',
     accentColor: '#f3e6d4',
@@ -225,6 +289,8 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     proofHeadline: '',
     proofSubheadline: '',
   });
+  const [offerDraftPackageId, setOfferDraftPackageId] = useState('');
+  const [offerDraftAddonIds, setOfferDraftAddonIds] = useState<string[]>([]);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isSavingSelectionSet, setIsSavingSelectionSet] = useState(false);
   const [isSavingBranding, setIsSavingBranding] = useState(false);
@@ -237,6 +303,18 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   const versions = useMemo(() => projectProof?.versions ?? [], [projectProof]);
   const proofLinks = versions.flatMap((version) => version.proofLinks);
   const latestProofLink = projectProof?.latestProofLink ?? null;
+  const packageCatalog = useMemo(
+    () => catalogItems.filter((item) => item.kind === 'package' && item.isActive),
+    [catalogItems]
+  );
+  const addonCatalog = useMemo(
+    () => catalogItems.filter((item) => item.kind === 'addon' && item.isActive),
+    [catalogItems]
+  );
+  const selectedOfferPackage = useMemo(
+    () => packageCatalog.find((item) => item.id === offerDraftPackageId) ?? null,
+    [offerDraftPackageId, packageCatalog]
+  );
 
   useEffect(() => {
     const saved = localStorage.getItem('workflow-thumb-size');
@@ -250,6 +328,12 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
+
+  useEffect(() => {
+    if (!offerDraftPackageId && packageCatalog[0]) {
+      setOfferDraftPackageId(packageCatalog[0].id);
+    }
+  }, [offerDraftPackageId, packageCatalog]);
 
   const shortlistedPhotos = useMemo(
     () => photos.filter((photo) => photo.selectionStatus === 'shortlisted'),
@@ -316,6 +400,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       selectionSetsRes,
       offersRes,
       ordersRes,
+      catalogRes,
       brandingRes,
     ] = await Promise.all([
       supabase
@@ -335,14 +420,23 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         .order('created_at', { ascending: false }),
       supabase
         .from('offers')
-        .select('id,title,status,total_cents,currency,updated_at')
+        .select('id,title,status,total_cents,currency,updated_at,notes,package_catalog_item_id')
         .eq('project_id', projectId)
         .order('updated_at', { ascending: false }),
       supabase
         .from('orders')
-        .select('id,status,payment_status,fulfillment_status,total_cents,currency,updated_at,operator_notes')
+        .select('id,status,payment_status,fulfillment_status,total_cents,currency,updated_at,operator_notes,buyer_name,buyer_email,buyer_phone,client_note,shipping_name,shipping_address_line_1,shipping_address_line_2,shipping_city,shipping_state,shipping_postal_code,shipping_country')
         .eq('project_id', projectId)
         .order('updated_at', { ascending: false }),
+      currentStudioId
+        ? supabase
+            .from('studio_catalog_items')
+            .select('*')
+            .eq('studio_id', currentStudioId)
+            .order('kind', { ascending: true })
+            .order('sort_order', { ascending: true })
+            .order('updated_at', { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
       currentStudioId
         ? supabase
             .from('studio_branding')
@@ -488,19 +582,97 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       })
     );
 
+    const catalogRows = (catalogRes.data ?? []) as CatalogItemRow[];
+    setCatalogItems(
+      catalogRows.map((row) => ({
+        id: row.id,
+        studioId: row.studio_id,
+        kind: row.kind,
+        title: row.title,
+        description: row.description,
+        currency: row.currency,
+        priceCents: row.price_cents,
+        internalCostCents: row.internal_cost_cents,
+        isActive: row.is_active,
+        sortOrder: row.sort_order,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }))
+    );
+
+    const offerRows = (offersRes.data ?? []) as OfferRow[];
+    const orderRows = (ordersRes.data ?? []) as OrderRow[];
+    const offerIds = offerRows.map((row) => row.id);
+    const orderIds = orderRows.map((row) => row.id);
+    const [offerItemsRes, orderItemsRes] = await Promise.all([
+      offerIds.length > 0
+        ? supabase
+            .from('offer_items')
+            .select('id,offer_id,title,description,quantity,unit_price_cents,line_total_cents,item_kind,is_optional,is_selected_by_default,internal_cost_cents,studio_catalog_item_id')
+            .in('offer_id', offerIds)
+        : Promise.resolve({ data: [], error: null }),
+      orderIds.length > 0
+        ? supabase
+            .from('order_items')
+            .select('id,order_id,title,description,quantity,unit_price_cents,line_total_cents,item_kind,internal_cost_cents,studio_catalog_item_id')
+            .in('order_id', orderIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const offerItemsById = new Map<string, OfferItemSummary[]>();
+    for (const item of (offerItemsRes.data ?? []) as OfferItemRow[]) {
+      const currentItems = offerItemsById.get(item.offer_id) ?? [];
+      currentItems.push({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        quantity: item.quantity,
+        unitPriceCents: item.unit_price_cents,
+        lineTotalCents: item.line_total_cents,
+        itemKind: item.item_kind,
+        isOptional: item.is_optional,
+        isSelectedByDefault: item.is_selected_by_default,
+        internalCostCents: item.internal_cost_cents,
+        studioCatalogItemId: item.studio_catalog_item_id,
+      });
+      offerItemsById.set(item.offer_id, currentItems);
+    }
+
+    const orderItemsById = new Map<string, OfferItemSummary[]>();
+    for (const item of (orderItemsRes.data ?? []) as OrderItemRow[]) {
+      const currentItems = orderItemsById.get(item.order_id) ?? [];
+      currentItems.push({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        quantity: item.quantity,
+        unitPriceCents: item.unit_price_cents,
+        lineTotalCents: item.line_total_cents,
+        itemKind: item.item_kind,
+        isOptional: false,
+        isSelectedByDefault: false,
+        internalCostCents: item.internal_cost_cents,
+        studioCatalogItemId: item.studio_catalog_item_id,
+      });
+      orderItemsById.set(item.order_id, currentItems);
+    }
+
     setOffers(
-      ((offersRes.data ?? []) as OfferRow[]).map((row) => ({
+      offerRows.map((row) => ({
         id: row.id,
         title: row.title,
         status: row.status,
         totalCents: row.total_cents,
         currency: row.currency,
         updatedAt: row.updated_at,
+        notes: row.notes,
+        packageCatalogItemId: row.package_catalog_item_id,
+        items: offerItemsById.get(row.id) ?? [],
       }))
     );
 
     setOrders(
-      ((ordersRes.data ?? []) as OrderRow[]).map((row) => ({
+      orderRows.map((row) => ({
         id: row.id,
         status: row.status,
         paymentStatus: row.payment_status,
@@ -509,6 +681,18 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
         currency: row.currency,
         updatedAt: row.updated_at,
         operatorNotes: row.operator_notes,
+        buyerName: row.buyer_name,
+        buyerEmail: row.buyer_email,
+        buyerPhone: row.buyer_phone,
+        clientNote: row.client_note,
+        shippingName: row.shipping_name,
+        shippingAddressLine1: row.shipping_address_line_1,
+        shippingAddressLine2: row.shipping_address_line_2,
+        shippingCity: row.shipping_city,
+        shippingState: row.shipping_state,
+        shippingPostalCode: row.shipping_postal_code,
+        shippingCountry: row.shipping_country,
+        items: orderItemsById.get(row.id) ?? [],
       }))
     );
 
@@ -516,6 +700,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     if (brandingData) {
       setBranding({
         studioName: brandingData.studio_name ?? '',
+        senderName: brandingData.sender_name ?? brandingData.studio_name ?? '',
         logoUrl: brandingData.logo_url ?? '',
         primaryColor: brandingData.primary_color ?? '#cc785c',
         accentColor: brandingData.accent_color ?? '#f3e6d4',
@@ -1254,46 +1439,98 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   async function createOffer() {
     try {
-      const clientId = await ensureClientId();
+      if (!selectedOfferPackage) {
+        alert('Create a package in Settings before building an offer.');
+        return;
+      }
+
       const latestVersion = versions.find((version) => version.isActive) ?? versions[0];
+      if (!latestVersion) {
+        alert('Publish a proof version before creating a client offer.');
+        return;
+      }
+      const clientId = await ensureClientId();
+      const selectedAddons = addonCatalog.filter((item) => offerDraftAddonIds.includes(item.id));
+      const totalCents = calculateOfferSelectionTotal(
+        [
+          {
+            id: selectedOfferPackage.id,
+            title: selectedOfferPackage.title,
+            quantity: 1,
+            unitPriceCents: selectedOfferPackage.priceCents,
+            lineTotalCents: selectedOfferPackage.priceCents,
+            itemKind: 'included',
+            isOptional: false,
+            isSelectedByDefault: false,
+            internalCostCents: selectedOfferPackage.internalCostCents,
+            studioCatalogItemId: selectedOfferPackage.id,
+          },
+          ...selectedAddons.map<OfferItemSummary>((item) => ({
+            id: item.id,
+            title: item.title,
+            description: item.description,
+            quantity: 1,
+            unitPriceCents: item.priceCents,
+            lineTotalCents: item.priceCents,
+            itemKind: 'addon',
+            isOptional: true,
+            isSelectedByDefault: false,
+            internalCostCents: item.internalCostCents,
+            studioCatalogItemId: item.id,
+          })),
+        ],
+        []
+      );
       const { data: offer, error: offerError } = await supabase
         .from('offers')
         .insert({
           project_id: projectId,
           client_id: clientId,
-          album_version_id: latestVersion?.id ?? null,
-          title: latestVersion ? `Album Offer v${latestVersion.versionNumber}` : 'Album Offer',
+          album_version_id: latestVersion.id,
+          package_catalog_item_id: selectedOfferPackage.id,
+          title: selectedOfferPackage.title,
           status: 'sent',
-          currency: 'USD',
-          total_cents: 149900,
-          notes: 'Manual payment and print handoff handled by studio.',
+          currency: selectedOfferPackage.currency,
+          total_cents: totalCents,
+          notes:
+            selectedOfferPackage.description ||
+            'Prepared package published for the approved proof.',
         })
         .select()
         .single();
 
       if (offerError) throw offerError;
-
       const { error: itemsError } = await supabase.from('offer_items').insert([
         {
           offer_id: offer.id,
-          title: '12x12 Signature Album',
-          description: 'Flush-mount album with linen wrap.',
+          title: selectedOfferPackage.title,
+          description: selectedOfferPackage.description,
           quantity: 1,
-          unit_price_cents: 129900,
-          line_total_cents: 129900,
+          unit_price_cents: selectedOfferPackage.priceCents,
+          line_total_cents: selectedOfferPackage.priceCents,
+          item_kind: 'included',
+          is_optional: false,
+          is_selected_by_default: false,
+          internal_cost_cents: selectedOfferPackage.internalCostCents,
+          studio_catalog_item_id: selectedOfferPackage.id,
         },
-        {
+        ...selectedAddons.map((item) => ({
           offer_id: offer.id,
-          title: 'Parent Book Pair',
-          description: 'Two duplicate 8x8 albums.',
+          title: item.title,
+          description: item.description,
           quantity: 1,
-          unit_price_cents: 20000,
-          line_total_cents: 20000,
-        },
+          unit_price_cents: item.priceCents,
+          line_total_cents: item.priceCents,
+          item_kind: 'addon',
+          is_optional: true,
+          is_selected_by_default: false,
+          internal_cost_cents: item.internalCostCents,
+          studio_catalog_item_id: item.id,
+        })),
       ]);
 
       if (itemsError) throw itemsError;
-      setUserFeedback('Starter offer created.');
+      setUserFeedback('Prepared offer created.');
       await loadWorkspaceData();
     } catch (error: unknown) {
       console.error(error);
@@ -1306,6 +1543,13 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
       const clientId = await ensureClientId();
       const offer = offers.find((item) => item.id === offerId);
       if (!offer) return;
+      const includedItems = (offer.items ?? []).filter(
+        (item) => !item.isOptional || item.isSelectedByDefault
+      );
+      const totalCents =
+        includedItems.length > 0
+          ? includedItems.reduce((sum, item) => sum + item.lineTotalCents, 0)
+          : offer.totalCents;
 
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -1317,7 +1561,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           payment_status: 'payment_pending',
           fulfillment_status: 'fulfillment_pending',
           currency: offer.currency,
-          total_cents: offer.totalCents,
+          total_cents: totalCents,
           operator_notes: 'Client approved package. Awaiting manual payment confirmation.',
         })
         .select()
@@ -1326,23 +1570,33 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
       const { data: items, error: itemsError } = await supabase
         .from('offer_items')
-        .select('title,description,quantity,unit_price_cents,line_total_cents')
+        .select('title,description,quantity,unit_price_cents,line_total_cents,item_kind,internal_cost_cents,studio_catalog_item_id,is_optional,is_selected_by_default')
         .eq('offer_id', offerId);
       if (itemsError) throw itemsError;
 
       if ((items ?? []).length > 0) {
         const { error: orderItemsError } = await supabase.from('order_items').insert(
-          items.map((item) => ({
+          items
+            .filter((item) => !item.is_optional || item.is_selected_by_default)
+            .map((item) => ({
             order_id: order.id,
             title: item.title,
             description: item.description,
             quantity: item.quantity,
             unit_price_cents: item.unit_price_cents,
             line_total_cents: item.line_total_cents,
-          }))
+            item_kind: item.item_kind,
+            internal_cost_cents: item.internal_cost_cents,
+            studio_catalog_item_id: item.studio_catalog_item_id,
+            }))
         );
         if (orderItemsError) throw orderItemsError;
       }
+
+      await supabase
+        .from('offers')
+        .update({ status: 'accepted' })
+        .eq('id', offerId);
 
       await updateProjectAutoStatus('payment_pending');
       setActiveTab('orders');
@@ -1389,6 +1643,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
     const { error } = await supabase.from('studio_branding').upsert({
       studio_id: studioId,
       studio_name: branding.studioName,
+      sender_name: branding.senderName,
       logo_url: branding.logoUrl,
       primary_color: branding.primaryColor,
       accent_color: branding.accentColor,
@@ -2232,14 +2487,97 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
               <h2>Offers and package selection</h2>
-              <p>Create a commercial package after proofing and move approved offers into manual orders.</p>
+              <p>Attach prepared packages and guarded add-ons to the active proof before the client enters checkout.</p>
             </div>
             <div className={styles.toolbar}>
               <button className={styles.button} onClick={createOffer}>
-                Create Starter Offer
+                Publish Offer
               </button>
             </div>
           </div>
+
+          {packageCatalog.length === 0 ? (
+            <div className={styles.emptyState}>
+              <h3>No package catalog yet</h3>
+              <p>Open Settings first and create prepared packages before publishing a project offer.</p>
+              <div className={styles.actionRow}>
+                <Link className={styles.linkText} href="/settings">
+                  Open package catalog
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <article className={styles.dataCard}>
+              <div className={styles.cardTitleRow}>
+                <h3>Prepare a checkout offer</h3>
+                <span className={styles.pill}>
+                  {selectedOfferPackage
+                    ? `Base ${formatMoney(selectedOfferPackage.priceCents, selectedOfferPackage.currency)}`
+                    : 'Choose package'}
+                </span>
+              </div>
+              <p className={styles.metaText}>
+                Clients will see only the package and add-ons you prepare here. Freeform redesign stays out of the checkout flow.
+              </p>
+              <div className={styles.fieldGrid}>
+                <div className={styles.field}>
+                  <label htmlFor="offer-package">Prepared package</label>
+                  <select
+                    id="offer-package"
+                    value={offerDraftPackageId}
+                    onChange={(event) => setOfferDraftPackageId(event.target.value)}
+                  >
+                    {packageCatalog.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.title} · {formatMoney(item.priceCents, item.currency)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="offer-proof-state">Checkout gate</label>
+                  <input
+                    id="offer-proof-state"
+                    value={latestProofLink?.status === 'approved' ? 'Proof approved' : 'Checkout unlocks after approval'}
+                    disabled
+                  />
+                </div>
+              </div>
+
+              <div className={styles.stack}>
+                <span className={styles.metaText}>Optional add-ons for this package</span>
+                {addonCatalog.length === 0 ? (
+                  <p className={styles.metaText}>No add-ons configured yet. Clients will see the base package only.</p>
+                ) : (
+                  <div className={styles.optionList}>
+                    {addonCatalog.map((item) => {
+                      const isChecked = offerDraftAddonIds.includes(item.id);
+                      return (
+                        <label key={item.id} className={styles.optionRow}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(event) =>
+                              setOfferDraftAddonIds((current) =>
+                                event.target.checked
+                                  ? [...current, item.id]
+                                  : current.filter((entry) => entry !== item.id)
+                              )
+                            }
+                          />
+                          <div>
+                            <strong>{item.title}</strong>
+                            {item.description ? <p className={styles.metaText}>{item.description}</p> : null}
+                          </div>
+                          <span>{formatMoney(item.priceCents, item.currency)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </article>
+          )}
 
           {offers.length === 0 ? (
             <div className={styles.emptyState}>
@@ -2256,8 +2594,25 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                   </div>
                   <div className={styles.metaRow}>
                     <span>{formatMoney(offer.totalCents, offer.currency)}</span>
+                    <span>{offer.items?.filter((item) => item.isOptional).length ?? 0} add-ons</span>
                     <span>Updated {new Date(offer.updatedAt).toLocaleDateString()}</span>
                   </div>
+                  {offer.notes ? <p className={styles.metaText}>{offer.notes}</p> : null}
+                  {offer.items && offer.items.length > 0 ? (
+                    <div className={styles.optionList}>
+                      {offer.items.map((item) => (
+                        <div key={item.id} className={styles.optionRowStatic}>
+                          <div>
+                            <strong>{item.title}</strong>
+                            {item.description ? <p className={styles.metaText}>{item.description}</p> : null}
+                          </div>
+                          <span className={styles.pillMuted}>
+                            {item.isOptional ? 'Optional add-on' : 'Included'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className={styles.actionRow}>
                     <button className={styles.buttonGhost} onClick={() => createOrderFromOffer(offer.id)}>
                       Create Manual Order
@@ -2284,7 +2639,7 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
           <div className={styles.panelHeader}>
             <div className={styles.panelTitle}>
               <h2>Manual order tracking</h2>
-              <p>Track payment and fulfillment milestones until the album is delivered.</p>
+              <p>Track package content, buyer details, payment, and fulfillment until the album is delivered.</p>
             </div>
           </div>
 
@@ -2306,8 +2661,35 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
                     <span>Fulfillment: {order.fulfillmentStatus}</span>
                     <span>Updated {new Date(order.updatedAt).toLocaleDateString()}</span>
                   </div>
+                  {order.items && order.items.length > 0 ? (
+                    <div className={styles.optionList}>
+                      {order.items.map((item) => (
+                        <div key={item.id} className={styles.optionRowStatic}>
+                          <div>
+                            <strong>{item.title}</strong>
+                            {item.description ? <p className={styles.metaText}>{item.description}</p> : null}
+                          </div>
+                          <span className={styles.pillMuted}>
+                            {formatMoney(item.lineTotalCents, order.currency)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {order.buyerName || order.buyerEmail ? (
+                    <div className={styles.metaRow}>
+                      {order.buyerName ? <span>Buyer: {order.buyerName}</span> : null}
+                      {order.buyerEmail ? <span>{order.buyerEmail}</span> : null}
+                      {formatOrderDestination(order) ? (
+                        <span>Ship to {formatOrderDestination(order)}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {order.operatorNotes ? <p className={styles.metaText}>{order.operatorNotes}</p> : null}
                   <div className={styles.actionRow}>
+                    <Link className={styles.linkText} href={`/orders/${order.id}`}>
+                      Open order detail
+                    </Link>
                     {order.status === 'payment_pending' ? (
                       <button className={styles.buttonGhost} onClick={() => advanceOrder(order, 'paid')}>
                         Mark Paid
@@ -2352,13 +2734,17 @@ export default function ProjectWorkspace({ projectId }: { projectId: string }) {
 
           <div className={styles.brandingForm}>
             <div className={styles.fieldGrid}>
-              <div className={styles.field}>
-                <label htmlFor="studio-name">Studio name</label>
-                <input id="studio-name" value={branding.studioName} onChange={(event) => setBranding((current) => ({ ...current, studioName: event.target.value }))} />
-              </div>
-              <div className={styles.field}>
-                <label htmlFor="support-email">Support email</label>
-                <input id="support-email" value={branding.supportEmail} onChange={(event) => setBranding((current) => ({ ...current, supportEmail: event.target.value }))} />
+            <div className={styles.field}>
+              <label htmlFor="studio-name">Studio name</label>
+              <input id="studio-name" value={branding.studioName} onChange={(event) => setBranding((current) => ({ ...current, studioName: event.target.value }))} />
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="sender-name">Sender name</label>
+              <input id="sender-name" value={branding.senderName} onChange={(event) => setBranding((current) => ({ ...current, senderName: event.target.value }))} />
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="support-email">Support email</label>
+              <input id="support-email" value={branding.supportEmail} onChange={(event) => setBranding((current) => ({ ...current, supportEmail: event.target.value }))} />
               </div>
               <div className={styles.field}>
                 <label htmlFor="primary-color">Primary color</label>

@@ -25,6 +25,8 @@ export type ProjectWorkspaceTab = (typeof PROJECT_WORKSPACE_TABS)[number];
 export type SelectionStatus = 'unreviewed' | 'shortlisted' | 'excluded';
 export type ProofLinkStatus = 'draft' | 'active' | 'changes_requested' | 'approved' | 'archived';
 export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired';
+export type CatalogItemKind = 'package' | 'addon';
+export type OfferItemKind = 'included' | 'addon';
 export type OrderStatus =
   | 'payment_pending'
   | 'paid'
@@ -100,6 +102,35 @@ export interface ProofLinkSummary {
   albumVersionId: string;
 }
 
+export interface StudioCatalogItemSummary {
+  id: string;
+  studioId?: string;
+  kind: CatalogItemKind;
+  title: string;
+  description?: string | null;
+  currency: string;
+  priceCents: number;
+  internalCostCents: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt: string;
+}
+
+export interface OfferItemSummary {
+  id: string;
+  title: string;
+  description?: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+  itemKind: OfferItemKind;
+  isOptional: boolean;
+  isSelectedByDefault: boolean;
+  internalCostCents: number;
+  studioCatalogItemId?: string | null;
+}
+
 export interface OfferSummary {
   id: string;
   title: string;
@@ -107,6 +138,9 @@ export interface OfferSummary {
   totalCents: number;
   currency: string;
   updatedAt: string;
+  notes?: string | null;
+  packageCatalogItemId?: string | null;
+  items?: OfferItemSummary[];
 }
 
 export interface OrderSummary {
@@ -118,10 +152,23 @@ export interface OrderSummary {
   currency: string;
   updatedAt: string;
   operatorNotes?: string | null;
+  buyerName?: string | null;
+  buyerEmail?: string | null;
+  buyerPhone?: string | null;
+  clientNote?: string | null;
+  shippingName?: string | null;
+  shippingAddressLine1?: string | null;
+  shippingAddressLine2?: string | null;
+  shippingCity?: string | null;
+  shippingState?: string | null;
+  shippingPostalCode?: string | null;
+  shippingCountry?: string | null;
+  items?: OfferItemSummary[];
 }
 
 export interface StudioBrandingConfig {
   studioName?: string | null;
+  senderName?: string | null;
   logoUrl?: string | null;
   primaryColor: string;
   accentColor: string;
