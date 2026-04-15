@@ -56,11 +56,14 @@ export interface LoadedProof {
   proofStatus: string;
   approvedAt?: string | null;
   studioName: string;
+  senderName: string;
   supportEmail: string;
   proofHeadline: string;
   proofSubheadline: string;
   primaryColor: string;
   accentColor: string;
+  checkoutUrl?: string | null;
+  checkoutEnabled?: boolean;
   spreads: ProofSpreadRecord[];
   comments: ProofCommentRecord[];
   events: ProofEventRecord[];

@@ -61,7 +61,34 @@
   color: #1c1410;
 }
 
+.buttonGhost,
+.buttonDanger {
+  border: none;
+  border-radius: 999px;
+  padding: 0.78rem 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.buttonGhost {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--foreground);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.buttonDanger {
+  background: rgba(242, 129, 129, 0.18);
+  color: #ffc4c4;
+  border: 1px solid rgba(242, 129, 129, 0.28);
+}
+
 .button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.buttonGhost:disabled,
+.buttonDanger:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -99,6 +126,43 @@
   font-size: 0.9rem;
 }
 
+.toolbar {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.actionRow {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.stack {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.mutedText {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .form {
   display: grid;
   gap: 1rem;
@@ -124,7 +188,8 @@
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   width: 100%;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -147,6 +212,32 @@
   color: var(--muted);
 }
 
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.detailCard {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.detailCard span {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.detailCard strong {
+  font-size: 1.05rem;
+}
+
 .link {
   color: #f4d8cb;
   text-decoration: none;
@@ -161,6 +252,10 @@
   }
 
   .fieldGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailGrid {
     grid-template-columns: 1fr;
   }
 }

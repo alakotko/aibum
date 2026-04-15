@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
 import GalleryImage from '@/app/(dashboard)/projects/[id]/gallery/GalleryImage';
 import type { LoadedProof, ProofCommentRecord, ProofEventRecord } from '@/types/proof';
@@ -475,6 +476,29 @@ export default function ProofViewer({ initialProof }: { initialProof: LoadedProo
               </div>
             )}
           </div>
+
+          {proof.proofStatus === 'approved' ? (
+            <div className={styles.checkoutCard}>
+              <div className={styles.panelHeader}>
+                <h2>Package selection</h2>
+                <span className={styles.commentStatus}>
+                  {proof.checkoutEnabled ? 'Open' : 'Pending'}
+                </span>
+              </div>
+              <p className={styles.decisionText}>
+                Once your proof is approved, you can move into the branded package and checkout flow.
+              </p>
+              {proof.checkoutEnabled && proof.checkoutUrl ? (
+                <Link className={styles.checkoutLink} href={proof.checkoutUrl}>
+                  Continue to package selection
+                </Link>
+              ) : (
+                <p className={styles.empty}>
+                  The studio has not published a package offer for this proof yet.
+                </p>
+              )}
+            </div>
+          ) : null}
 
           <div className={styles.commentPanel}>
             <div className={styles.panelHeader}>

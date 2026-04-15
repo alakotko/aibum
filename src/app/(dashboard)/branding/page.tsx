@@ -10,6 +10,7 @@ export default function BrandingPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     studioName: '',
+    senderName: '',
     logoUrl: '',
     primaryColor: '#cc785c',
     accentColor: '#f3e6d4',
@@ -34,6 +35,7 @@ export default function BrandingPage() {
       if (data) {
         setForm({
           studioName: data.studio_name ?? '',
+          senderName: data.sender_name ?? data.studio_name ?? '',
           logoUrl: data.logo_url ?? '',
           primaryColor: data.primary_color ?? '#cc785c',
           accentColor: data.accent_color ?? '#f3e6d4',
@@ -51,6 +53,7 @@ export default function BrandingPage() {
     const { error } = await supabase.from('studio_branding').upsert({
       studio_id: studioId,
       studio_name: form.studioName,
+      sender_name: form.senderName,
       logo_url: form.logoUrl,
       primary_color: form.primaryColor,
       accent_color: form.accentColor,
@@ -87,6 +90,10 @@ export default function BrandingPage() {
             <div className={styles.field}>
               <label htmlFor="studio-name">Studio name</label>
               <input id="studio-name" value={form.studioName} onChange={(event) => setForm((current) => ({ ...current, studioName: event.target.value }))} />
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="sender-name">Sender name</label>
+              <input id="sender-name" value={form.senderName} onChange={(event) => setForm((current) => ({ ...current, senderName: event.target.value }))} />
             </div>
             <div className={styles.field}>
               <label htmlFor="support-email">Support email</label>

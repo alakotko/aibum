@@ -252,7 +252,8 @@
 }
 
 .identityCard,
-.decisionPanel {
+.decisionPanel,
+.checkoutCard {
   display: grid;
   gap: 0.75rem;
   padding: 1rem;
@@ -262,7 +263,8 @@
 }
 
 .identityCard h2,
-.decisionPanel h2 {
+.decisionPanel h2,
+.checkoutCard h2 {
   margin: 0;
   font-size: 1rem;
 }
@@ -320,6 +322,22 @@
 .secondaryAction {
   background: rgba(31, 25, 22, 0.08) !important;
   color: #3f2d24 !important;
+}
+
+.checkoutLink {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.85rem 1.15rem;
+  background: linear-gradient(
+    135deg,
+    var(--proof-primary),
+    color-mix(in srgb, var(--proof-primary) 68%, white)
+  );
+  color: #261710;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .eventList {
